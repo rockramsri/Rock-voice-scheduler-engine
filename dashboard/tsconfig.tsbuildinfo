@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/avatar.ts","./src/hooks.ts","./src/main.tsx","./src/mock.ts","./src/supabase.ts","./src/types.ts","./src/components/eventlog.tsx","./src/components/flowgraph.tsx","./src/components/graphnodes.tsx","./src/components/workflowpanel.tsx"],"version":"5.9.3"}

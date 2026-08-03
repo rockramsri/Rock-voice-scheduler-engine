@@ -1,0 +1,7 @@
+livekit-agents[openai,deepgram,cartesia,silero,turn-detector]~=1.6
+livekit-api~=1.2
+pydantic-ai~=2.21
+python-dotenv~=1.2
+twilio~=9.10
+aiohttp~=3.14
+supabase~=2.31

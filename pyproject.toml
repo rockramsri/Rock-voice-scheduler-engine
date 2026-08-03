@@ -1,0 +1,13 @@
+[tool.ruff]
+# Soft target width. E501 is not enforced (see lint.ignore) so pre-existing
+# long lines don't churn; run `ruff format` if you want hard wrapping.
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/F = pyflakes + pycodestyle, I = import sort, B = bugbear (real footguns),
+# ASYNC = async footguns, DTZ = timezone-naive datetimes.
+select = ["E", "F", "I", "B", "ASYNC", "DTZ"]
+# E501 (line-too-long) is style-only and noisy on existing code — leave width
+# to the formatter rather than sprinkling noqas. Every other E check stays on.
+ignore = ["E501"]
