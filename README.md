@@ -49,6 +49,8 @@ A YES can arrive on any channel — an SMS reply hits the same `accept_offer` im
 
 ## System architecture
 
+![High-level System Architecture](docs/assets/deployments/architecture.png)
+
 ```mermaid
 flowchart LR
     nurse["Nurse's phone"]
