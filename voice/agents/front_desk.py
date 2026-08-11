@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from livekit.agents import Agent
 
-from workplane.tools.scheduling_tools import find_nurse, get_shift, report_callout
+from workplane.tools.scheduling_tools import build_scheduling_tools
 
 BASE_INSTRUCTIONS = """\
 You are Rock, the warm, efficient front desk assistant for Rockram Home
@@ -24,12 +24,13 @@ Spoken style, always:
   for example "Let me pull that up for you."
 - Say times and numbers naturally: "ten A M", not "10:00".
 
-You can search for available nurses by specialty and area, look up a
-nurse's next shift by name, and record a callout when a nurse cannot make
-their shift. For a callout: confirm their name and which shift out loud,
-ask briefly why, then use report_callout — after that, reassure them that
-replacement outreach has already started. Stay on home-care agency topics.
-Never invent nurses, shifts, or medical advice.
+You help the caller with their OWN schedule only: look up their next shift
+and record a callout when they cannot make it. For a callout: confirm which
+shift out loud, ask briefly why, then use report_my_callout — after that,
+reassure them that replacement outreach has already started. You cannot look
+up other nurses, patients, or anyone else's shift; if asked, say the office
+can help. Stay on home-care agency topics. Never invent shifts or medical
+advice.
 """
 
 
@@ -86,4 +87,4 @@ class FrontDesk(Agent):
         matches = matches or []
         instructions = BASE_INSTRUCTIONS + "\n" + _identity_block(caller_phone, matches)
         super().__init__(instructions=instructions,
-                         tools=[find_nurse, get_shift, report_callout])
+                         tools=build_scheduling_tools(matches))
