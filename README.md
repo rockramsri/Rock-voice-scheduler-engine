@@ -203,7 +203,7 @@ Rock-scheduler-voice-agent/
 │   ├── engines/            # one adapter per profile (gemma_phi is a stub)
 │   └── agents/             # FrontDesk (inbound), OfferAgent (outbound, scope-locked)
 ├── workplane/              # brains behind the tools: Pydantic AI + plain functions
-│   ├── tools/              # facade tools: find_nurse, get_shift, report_callout
+│   ├── tools/              # caller-scoped facade tools: get_my_next_shift, report_my_callout
 │   ├── agents/             # matching_agent (spoken ranking), sms_agent (inbound texts)
 │   └── offers.py           # accept/decline + lock + stand-downs, the ONE implementation
 ├── workers/                # dispatch_worker loop, ladder policy, scoring, rung execution
@@ -223,3 +223,83 @@ Rock-scheduler-voice-agent/
 | [docs/deployment.md](docs/deployment.md) | the three configs in depth: component tables, env matrix, a reference docker-compose blueprint, capacity planning |
 | [docs/decisions.md](docs/decisions.md) | why Postgres, why so few tables, the discipline rules, ladder, identity, channels, scoring |
 | [docs/demo.md](docs/demo.md) | the solo one-phone demo playbook, start to finish |
+
+## Appendix — the lifecycle, end to end
+
+### Shift status machine
+
+Every shift row walks this machine; the status-change trigger audits each hop into `events`.
+
+```text
+scheduled ──callout──► callout ──score──► offers_out ──YES──► filled
+                          │                    │
+                          │                    ├── nobody left / quiet+urgent ──► escalated
+                          │                    └── ladder exhausted ──────────► escalated
+                          └── (no prospects) ─────────────────────────────────► escalated
+```
+
+`cancelled` and `completed` exist as reserved statuses in the schema; no code path writes them today. Offers run their own parallel machine per prospect: `scored → messaged → calling → accepted | declined | no_answer | stood_down`.
+
+### One callout, every service in order
+
+```text
+NURSE Maria                    TWILIO / LIVEKIT              OUR SERVICES                    SUPABASE
+     |                                |                            |                            |
+     |---- dial agency line --------->|                            |                            |
+     |                         create room                         |                            |
+     |                         SIP dispatch                        |                            |
+     |                         AGENT_NAME=rock-agent ------------->| VOICE WORKER               |
+     |                                |                    entrypoint (no offer meta)           |
+     |                                |                    FrontDesk + caller-scoped tools      |
+     |                                |                    session.start(room)                  |
+     |<======== live audio ==========>|<====== session ==========>|                             |
+     |  "I'm sick, can't make shift"  |                            |                            |
+     |                                |                    report_my_callout() ---------------->|
+     |                                |                            |           shifts:          |
+     |                                |                            |           status=callout   |
+     |                                |                            |           nurse_id=NULL    |
+     |                                |                            |           next_action=now  |
+     |  "outreach already started"    |                            |           + events row     |
+     |---- hang up ------------------>|                            |                            |
+     |                         room ends                           |                            |
+
+
+     |                                |              DISPATCH WORKER (poll ~2s)                 |
+     |                                |                    claim_shifts() --------------------->|
+     |                                |                            |    SKIP LOCKED claims      |
+     |                                |                            |    this shift              |
+     |                                |                    score nurses                         |
+     |                                |                    insert offers ---------------------->|
+     |                                |                    release: offers_out, next=now ------>|
+
+
+     |                                |              DISPATCH (next burst, same or any worker)  |
+     |                                |                    claim again (rung 1)                 |
+     |                                |                    message_rung: bump offer,            |
+     |                                |                    send_textbelt(+ replyWebhookUrl) ---> TextBelt
+     |                                |                    release: wait 10-60 min ------------>|
+
+
+James phone <---- SMS "YES/NO to take shift" ---- TextBelt
+     |
+     |---- replies YES --------------> TextBelt
+     |                                |-- POST /textbelt-reply ---> SMS WEBHOOK (:8787)
+     |                                |                    _offer_reply -> accept_offer()
+     |                                |                    lock_shift(rpc) -------------------->|
+     |                                |                            |    first YES: filled       |
+     |                                |                            |    nurse_id=James          |
+     |                                |                    stand_down other offers + texts      |
+     |<---- "Confirmed, it's yours" --| send_textbelt <----------- SMS WEBHOOK                  |
+
+
+(If nobody texts YES, later bursts:)
+     |                                |              DISPATCH voice_rung                        |
+     |                                |                    place_call(metadata=offer_id) ------> LiveKit
+     |                                |                        create room + dispatch           |
+     |                                |                        dial James ---------------------->|
+James |<======= rings ================|                            |                            |
+     |                        VOICE WORKER: OfferAgent(session) for that offer                  |
+     |  "yes" -> accept_this_shift -> same lock_shift / stand_downs as the SMS path             |
+```
+
+The worker never waits in memory: every "wait 10-60 min" is `next_action_at` written on the shift row, and whichever worker polls after that timestamp picks the story back up.
