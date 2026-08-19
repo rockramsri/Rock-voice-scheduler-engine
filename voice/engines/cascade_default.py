@@ -6,6 +6,8 @@ enough to run this whole pipeline. Phase 3 adds gemma_phi as the
 PHI-safe, fully self-hosted sibling of this cascade.
 """
 
+import inspect
+
 from livekit.agents import AgentSession, TurnHandlingOptions, inference, llm, stt, tts
 from livekit.plugins import cartesia, deepgram, openai, silero
 
@@ -32,6 +34,11 @@ def _tts() -> tts.TTS:
 
 def build_session() -> AgentSession:
     """Cascade session: separate best-of-breed models per pipeline stage."""
+    extras = {}
+    # Expressive mode (LLM-steered emotion/pacing) needs a newer SDK and the
+    # inference TTS route; the flag turns itself on once the SDK supports it.
+    if "expressive" in inspect.signature(AgentSession.__init__).parameters:
+        extras["expressive"] = True
     return AgentSession(
         stt=_stt(),
         llm=_llm(),
@@ -40,4 +47,5 @@ def build_session() -> AgentSession:
         turn_handling=TurnHandlingOptions(
             turn_detection=inference.TurnDetector(),
         ),
+        **extras,
     )

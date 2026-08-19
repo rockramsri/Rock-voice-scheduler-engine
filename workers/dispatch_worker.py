@@ -13,7 +13,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from data import db
 from shared import config
@@ -62,20 +63,41 @@ async def _start_offering(shift: dict, agency: dict) -> None:
     """Score prospects, write the scoreboard, hand over to the ladder."""
     nurses = await db.fetch_active_nurses()
     busy = await db.overlapping_nurse_ids(shift["starts_at"], shift["ends_at"])
-    prospects = scoring.rank(shift, nurses, busy | {shift["callout_nurse_id"]}, agency)
-    if not prospects:
+    continuity = await db.continuity_counts(shift["patient_id"])
+    week_start, week_end = _week_bounds(shift, agency)
+    hours = await db.nurse_week_hours(week_start, week_end)
+    prospects, skipped, fallbacks = scoring.rank(
+        shift, nurses, busy | {shift["callout_nurse_id"]}, agency,
+        continuity=continuity, week_hours=hours)
+    for note in skipped:
+        log.info("shift %s: %s", shift["id"][:8], note)
+    if not prospects and not fallbacks:
         await rungs.escalate(shift, "no eligible prospects")
         return
-    await db.insert_offers([{
-        "shift_id": shift["id"], "nurse_id": p.nurse_id,
-        "score": p.score, "reason": p.reason,
-    } for p in prospects])
-    names = ", ".join(f"{p.name} ({p.score})" for p in prospects)
-    log.info("shift %s scored -> %s", shift["id"][:8], names)
+    rows = [{"shift_id": shift["id"], "nurse_id": p.nurse_id,
+             "score": p.score, "reason": p.reason} for p in prospects]
+    # Soft memory skips wait in state "fallback": the ladder ignores them until
+    # every clean prospect is exhausted, then the voice rung asks once, gently.
+    rows += [{"shift_id": shift["id"], "nurse_id": p.nurse_id, "score": p.score,
+              "reason": p.reason, "state": "fallback"} for p in fallbacks]
+    await db.insert_offers(rows)
+    names = ", ".join(f"{p.name} ({p.score})" for p in prospects) or "none clean"
+    log.info("shift %s scored -> %s (+%d last-resort)",
+             shift["id"][:8], names, len(fallbacks))
     await db.log_event("worker", "prospects_scored", shift_id=shift["id"],
-                       payload={"prospects": names})
+                       payload={"prospects": names, "skipped": skipped,
+                                "fallbacks": [p.name for p in fallbacks]})
     await db.release_shift(shift["id"], status="offers_out", rung=0,
                            next_action_at=rungs.now().isoformat())
+
+
+def _week_bounds(shift: dict, agency: dict) -> tuple[str, str]:
+    """[Monday 00:00, next Monday) of the shift's week, agency-local."""
+    starts = (datetime.fromisoformat(shift["starts_at"])
+              .astimezone(ZoneInfo(agency["timezone"])))
+    monday = (starts - timedelta(days=starts.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    return monday.isoformat(), (monday + timedelta(days=7)).isoformat()
 
 
 async def _advance(shift: dict, agency: dict) -> None:

@@ -69,22 +69,37 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
 
     candidates = [o for o in await db.offers_for_shift(shift["id"], states=["scored", "messaged"])
                   if "voice" in _allowed_channels(o)]
+    override = False
+    if not candidates:
+        # Every clean prospect is exhausted: last-resort tier. One gentle,
+        # apologetic ask per opted-out nurse — never the full ladder.
+        candidates = [o for o in await db.offers_for_shift(shift["id"], states=["fallback"])
+                      if "voice" in _allowed_channels(o)]
+        override = True
     if not candidates:
         await escalate(shift, "all prospects exhausted")
         return
     offer = candidates[0]
-    if not await db.set_offer_state(offer["id"], "calling", ["scored", "messaged"]):
+    claim_from = ["fallback"] if override else ["scored", "messaged"]
+    if not await db.set_offer_state(offer["id"], "calling", claim_from):
         return  # raced with a reply; next poll re-evaluates
     phone = offer["nurses"]["phone"]
     if _is_fake(phone):
         await db.set_offer_state(offer["id"], "no_answer", ["calling"])
         outcome = "skipped_fake_number"
     else:
+        meta = {"role": "offer", "offer_id": offer["id"]}
+        if override:
+            meta["override"] = True
         result = await outbound.place_call(
-            phone, room_name=f"offer-{offer['id'][:8]}",
-            metadata=json.dumps({"role": "offer", "offer_id": offer["id"]}))
+            phone, room_name=f"offer-{offer['id'][:8]}", metadata=json.dumps(meta))
         outcome = "dialing" if result.get("ok") else "dial_failed"
-    log.info("voice rung: %s -> %s", offer["nurses"]["name"], outcome)
+    if override:
+        await db.log_event("worker", "preference_override_ask", shift_id=shift["id"],
+                           nurse_id=offer["nurse_id"], channel="voice",
+                           payload={"reason": _last_memory_note(offer["nurses"])})
+    log.info("voice rung%s: %s -> %s", " (override)" if override else "",
+             offer["nurses"]["name"], outcome)
     await db.log_event("worker", "offer_call", shift_id=shift["id"],
                        nurse_id=offer["nurse_id"], channel="voice",
                        rung=rung.number, outcome=outcome)
@@ -120,6 +135,12 @@ def _allowed_channels(offer: dict) -> list[str]:
     """Channels this nurse is comfortable with (dashboard-editable preference)."""
     prefs = offer["nurses"].get("preferences") or {}
     return prefs.get("channels") or ["sms", "whatsapp", "voice"]
+
+
+def _last_memory_note(nurse: dict) -> str:
+    """Most recent learned-preference note, for the override audit trail."""
+    memory = (nurse.get("preferences") or {}).get("memory") or []
+    return memory[-1]["note"] if memory else ""
 
 
 def now() -> datetime:

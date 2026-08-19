@@ -16,6 +16,7 @@ from pydantic_ai import Agent
 from data import db
 from shared.config import WORKPLANE_MODEL
 from shared.spoken import spoken_when
+from workplane.offers import decline_offer
 
 SMS_INSTRUCTIONS = (
     "You are Rock, answering SMS messages for Rockram Home Health Care, "
@@ -24,15 +25,19 @@ SMS_INSTRUCTIONS = (
     "from our database precedes each message — prefer it over tools, "
     "address the nurse by first name when the context identifies them, "
     "and answer questions about a pending offer from its details. If "
-    "several nurses share the phone and it matters, ask which one is "
-    "texting. Only look up the texter's own shift; never discuss other "
-    "nurses. If the message describes an emergency, tell them to call "
-    "911 now. For anything else, ask them to call the office."
+    "they decline the pending offer — a no, with or without a reason — "
+    "call decline_pending_offer with their reason (avoid_weekends=true "
+    "when they say weekends don't work) and confirm warmly, mentioning "
+    "we'll remember. If several nurses share the phone and it matters, "
+    "ask which one is texting. Only look up the texter's own shift; "
+    "never discuss other nurses. If the message describes an emergency, "
+    "tell them to call 911 now. For anything else, ask them to call the "
+    "office."
 )
 
 
-def _build_sms_agent(allowed: list[dict]) -> Agent:
-    """An agent whose only tool is scoped to the nurses on THIS phone."""
+def _build_sms_agent(allowed: list[dict], phone: str) -> Agent:
+    """An agent whose tools are scoped to the nurses on THIS phone."""
     names = {n["name"]: n for n in allowed}
     agent = Agent(WORKPLANE_MODEL, output_type=str, instructions=SMS_INSTRUCTIONS)
 
@@ -51,6 +56,25 @@ def _build_sms_agent(allowed: list[dict]) -> Agent:
                 f"{spoken_when(shift['starts_at'], shift['ends_at'])} "
                 f"in {shift['area']}.")
 
+    @agent.tool_plain
+    async def decline_pending_offer(reason: str = "", avoid_weekends: bool = False) -> str:
+        """Decline the texter's pending shift offer; remember the reason for future offers."""
+        offer = await db.pending_offer_for_phone(phone)
+        if offer is None:
+            return "There is no pending offer to decline."
+        await decline_offer(offer)
+        first = offer["nurses"]["name"].split()[0]
+        if avoid_weekends:
+            await db.learn_nurse_preference(
+                offer["nurse_id"], reason or "prefers no weekend shifts",
+                avoid_dows=[5, 6])
+            return (f"Offer declined for {first}; preference saved — no more "
+                    "weekend offers.")
+        if reason:
+            await db.learn_nurse_preference(offer["nurse_id"], reason)
+            return f"Offer declined for {first}; reason noted for future scheduling."
+        return f"Offer declined for {first}."
+
     return agent
 
 
@@ -58,7 +82,7 @@ async def reply_to_sms(from_number: str, body: str) -> str:
     """One inbound text in, one context-grounded, phone-scoped reply out."""
     allowed = await db.find_nurses_by_phone(from_number)
     context = await _context_for(from_number, allowed)
-    agent = _build_sms_agent(allowed)
+    agent = _build_sms_agent(allowed, from_number)
     result = await agent.run(f"{context}\n\nNew SMS from {from_number}: {body}")
     return result.output
 

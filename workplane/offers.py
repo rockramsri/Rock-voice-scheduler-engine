@@ -15,11 +15,12 @@ import logging
 from data import db
 from shared.phone import is_fake
 from shared.spoken import spoken_when
+from workplane import emr
 
 log = logging.getLogger("workplane.offers")
 
-RESPONDABLE = ["scored", "messaged", "calling"]
-STAND_DOWN_FROM = ["scored", "messaged", "calling", "no_answer"]
+RESPONDABLE = ["scored", "messaged", "calling", "fallback"]
+STAND_DOWN_FROM = ["scored", "messaged", "calling", "no_answer", "fallback"]
 
 _background: set[asyncio.Task] = set()
 
@@ -30,6 +31,10 @@ async def accept_offer(offer: dict) -> bool:
     if won:
         await db.set_offer_state(offer["id"], "accepted", RESPONDABLE)
         log.info("offer %s ACCEPTED - shift %s filled", offer["id"], offer["shift_id"])
+        shift = offer.get("shifts") or {"id": offer["shift_id"]}
+        await emr.post_chart_event(
+            "shift_reassigned", shift, nurse_id=offer["nurse_id"],
+            details={"assigned_nurse": (offer.get("nurses") or {}).get("name", "")})
         task = asyncio.create_task(stand_down_losers(offer["shift_id"]))
         _background.add(task)
         task.add_done_callback(_background.discard)
@@ -55,6 +60,11 @@ async def stand_down_losers(shift_id: str) -> None:
         for offer in losers:
             if not await db.set_offer_state(offer["id"], "stood_down", STAND_DOWN_FROM):
                 continue  # raced with a late reply; leave it be
+            if offer["state"] == "fallback":
+                # Opted-out and never contacted — flip state silently, no text.
+                await db.log_event("workplane", "stand_down", shift_id=shift_id,
+                                   nurse_id=offer["nurse_id"], outcome="silent_fallback")
+                continue
             phone = offer["nurses"]["phone"]
             channels = (offer["nurses"].get("preferences") or {}).get("channels") or ["sms"]
             outcome = "skipped"

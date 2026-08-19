@@ -9,6 +9,7 @@ and rungs are bumped BEFORE sending anything (no duplicate outreach).
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 from supabase import Client, create_client
@@ -160,7 +161,86 @@ async def overlapping_nurse_ids(starts_at: str, ends_at: str) -> set[str]:
     return {row["nurse_id"] for row in result.data}
 
 
+async def continuity_counts(patient_id: str) -> dict[str, int]:
+    """Times each nurse has already held a shift for this patient (continuity of care)."""
+    cutoff = datetime.now(UTC).isoformat()
+    result = await _run(lambda: client().table("shifts").select("nurse_id")
+                        .eq("patient_id", patient_id)
+                        .not_.is_("nurse_id", "null")
+                        .in_("status", ["scheduled", "filled", "completed"])
+                        .lt("starts_at", cutoff).execute())
+    counts: dict[str, int] = {}
+    for row in result.data:
+        counts[row["nurse_id"]] = counts.get(row["nurse_id"], 0) + 1
+    return counts
+
+
+async def nurse_week_hours(week_start: str, week_end: str) -> dict[str, float]:
+    """Hours each nurse is already booked inside [week_start, week_end) — overtime guard."""
+    result = await _run(lambda: client().table("shifts")
+                        .select("nurse_id, starts_at, ends_at")
+                        .not_.is_("nurse_id", "null")
+                        .in_("status", ["scheduled", "filled", "offers_out", "callout"])
+                        .lt("starts_at", week_end).gt("ends_at", week_start).execute())
+    window_start = datetime.fromisoformat(week_start)
+    window_end = datetime.fromisoformat(week_end)
+    hours: dict[str, float] = {}
+    for row in result.data:
+        clipped_start = max(datetime.fromisoformat(row["starts_at"]), window_start)
+        clipped_end = min(datetime.fromisoformat(row["ends_at"]), window_end)
+        overlap = max(0.0, (clipped_end - clipped_start).total_seconds() / 3600)
+        hours[row["nurse_id"]] = hours.get(row["nurse_id"], 0.0) + overlap
+    return hours
+
+
 # ---- writes (all guarded) ----
+
+async def learn_nurse_preference(nurse_id: str, note: str,
+                                 avoid_dows: list[int] | None = None) -> None:
+    """Persist a learned preference on the nurse row (caregiver memory).
+
+    Appends to a capped `memory` list and unions `avoid_dows` (Python weekday
+    numbers, Mon=0..Sun=6) inside the preferences jsonb; scoring skips those
+    days at rank time. Audited as a memory_learned event.
+    """
+    rows = (await _run(lambda: client().table("nurses").select("preferences")
+                       .eq("id", nurse_id).limit(1).execute())).data
+    prefs = (rows[0].get("preferences") if rows else None) or {}
+    memory = prefs.get("memory", [])
+    memory.append({"note": note, "at": datetime.now(UTC).isoformat()})
+    prefs["memory"] = memory[-20:]
+    if avoid_dows:
+        prefs["avoid_dows"] = sorted({*prefs.get("avoid_dows", []), *avoid_dows})
+    await _run(lambda: client().table("nurses").update({"preferences": prefs})
+               .eq("id", nurse_id).execute())
+    await log_event("workplane", "memory_learned", nurse_id=nurse_id,
+                    payload={"reason": note, "avoid_dows": avoid_dows or []})
+
+
+async def record_override_outcome(nurse_id: str, accepted: bool) -> None:
+    """Track answers to last-resort override asks (memory that updates itself).
+
+    An accepted ask resets the counter — the preference stays soft. Two
+    declined asks promote avoid_dows into hard_avoid_dows, and scoring then
+    never offers those days again, not even as a fallback.
+    """
+    rows = (await _run(lambda: client().table("nurses").select("preferences")
+                       .eq("id", nurse_id).limit(1).execute())).data
+    prefs = (rows[0].get("preferences") if rows else None) or {}
+    if accepted:
+        prefs["override_declines"] = 0
+    else:
+        prefs["override_declines"] = prefs.get("override_declines", 0) + 1
+        if prefs["override_declines"] >= 2 and prefs.get("avoid_dows"):
+            prefs["hard_avoid_dows"] = sorted({*prefs.get("hard_avoid_dows", []),
+                                               *prefs["avoid_dows"]})
+    await _run(lambda: client().table("nurses").update({"preferences": prefs})
+               .eq("id", nurse_id).execute())
+    await log_event("workplane", "override_outcome", nurse_id=nurse_id,
+                    outcome="accepted" if accepted else "declined",
+                    payload={"declines": prefs.get("override_declines", 0),
+                             "hard_avoid_dows": prefs.get("hard_avoid_dows", [])})
+
 
 async def record_callout(shift_id: str, nurse_id: str, reason: str) -> bool:
     """scheduled -> callout: opens the seat and wakes the worker immediately."""

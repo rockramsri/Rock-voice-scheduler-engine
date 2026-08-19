@@ -1,6 +1,34 @@
-# Rock Scheduler
+<p align="center">
+  <img src="docs/assets/brand/rock-logo.png" width="88" alt="Rock Scheduler logo" />
+</p>
 
-Voice-AI shift backfill for home health care. A nurse calls out; Rock covers the shift.
+<h1 align="center">Rock Scheduler</h1>
+
+<p align="center"><b>Voice-AI shift backfill for home health care. A nurse calls out; Rock covers the shift.</b></p>
+
+<p align="center">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" />
+  <img alt="LiveKit Agents" src="https://img.shields.io/badge/voice-LiveKit%20Agents-0A84FF" />
+  <img alt="Supabase Postgres" src="https://img.shields.io/badge/data-Supabase%20Postgres-3FCF8E?logo=supabase&logoColor=white" />
+  <img alt="React 19 console" src="https://img.shields.io/badge/console-React%2019-61DAFB?logo=react&logoColor=black" />
+  <img alt="Engines" src="https://img.shields.io/badge/engines-cascade%20%7C%20realtime%20%7C%20local-8B5CF6" />
+</p>
+
+<p align="center">
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#system-architecture">Architecture</a> ·
+  <a href="docs/cases.md">Use cases</a> ·
+  <a href="docs/memory.md">Memory</a> ·
+  <a href="#three-ways-to-run-it">Deploy configs</a> ·
+  <a href="#documentation">Docs</a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/hero-console.gif" width="840" alt="Ops console watching a live callout: scoring, SMS/WhatsApp/voice ladder, first YES locking the shift" />
+</p>
+
+<p align="center"><i>One callout, start to finish, on the live ops console — callout → scoring → SMS → WhatsApp → AI voice call → first YES locks the shift, everyone else stood down.
+Regenerate this film anytime: <code>ops-console/scripts/demo-gif/</code>.</i></p>
 
 Rock Scheduler is an open-source platform built on [LiveKit Agents](https://docs.livekit.io/agents/) (Python), Supabase Postgres, Twilio SIP, TextBelt SMS, and a React ops console. A nurse dials the agency line — the demo agency is the fictional **Rockram Home Health Care** on **+1 929 730-7867** — and tells Rock, the AI front desk, that she cannot make her shift. From that sentence on, the machine runs itself:
 
@@ -13,6 +41,15 @@ Rock Scheduler is an open-source platform built on [LiveKit Agents](https://docs
 Phoned in at minute zero, covered by minute three. That is the story the whole system is shaped around.
 
 **The UI is a window. The engine is headless.** The ops console never calls the engine, and the engine never calls the console. The console only reads realtime rows from Postgres and registers rosters; close it mid-callout and nothing changes. Any UI — or no UI — works, because the state machine lives in the database.
+
+## Use cases — watch it decide
+
+Four real paths through the engine, each with its sequence diagram and the exact audit events to watch: **[docs/cases.md](docs/cases.md)**.
+
+| | |
+| --- | --- |
+| 🟢 **[First YES wins](docs/cases.md#1-the-golden-path--first-yes-wins)** — callout → scored → texted → atomic lock → stand-downs, EMR write-back included. | 🧠 **[A decline becomes memory](docs/cases.md#2-decline-with-a-reason--memory-is-born)** — *"no, I don't do weekends"* compiles into a rule; next weekend she's skipped, with the reason logged. |
+| 🙏 **[The last-resort ask](docs/cases.md#3-the-last-resort-override--asking-like-a-human)** — everyone clean is exhausted, so Rock makes one apologetic, audited call against a soft preference. | 🛡️ **[The guards](docs/cases.md#4-the-guards--overtime-hard-preferences-escalation)** — overtime caps and hard preferences refuse quietly dangerous fills; dead ends escalate to a human, audited. |
 
 ## The three-minute story
 
@@ -128,6 +165,14 @@ Honest status: this maps to `ENGINE_PROFILE=gemma_phi`, which today is a wired p
 
 ![Config 3 — Realtime Speech-to-Speech](docs/assets/deployments/realtime.png)
 
+## The agent that remembers
+
+Rock compiles what nurses say into rules — once, at conversation time — and recalls them for free on every callout. Rules decide **who** gets contacted; notes shape **how** the agent talks. Soft preferences can be asked once, apologetically, as a last resort; two declined asks promote them to hard, and she is never asked again. Full design: [docs/memory.md](docs/memory.md).
+
+![Caregiver memory — learn once, recall instantly](docs/assets/memory-architecture.png)
+
+![Preference lifecycle — soft, override, hard](docs/assets/override-lifecycle.png)
+
 ## Quickstart
 
 Requires Python 3.11+ and Node 20+.
@@ -219,6 +264,8 @@ Rock-scheduler-voice-agent/
 
 | Doc | What is inside |
 | --- | --- |
+| [docs/cases.md](docs/cases.md) | the four use-case stories with sequence diagrams and the audit events to watch |
+| [docs/memory.md](docs/memory.md) | caregiver memory: write/read paths, the override ladder, self-promoting preferences |
 | [docs/architecture.md](docs/architecture.md) | component-by-component walkthrough, ER diagram, shift and offer state machines |
 | [docs/deployment.md](docs/deployment.md) | the three configs in depth: component tables, env matrix, a reference docker-compose blueprint, capacity planning |
 | [docs/decisions.md](docs/decisions.md) | why Postgres, why so few tables, the discipline rules, ladder, identity, channels, scoring |

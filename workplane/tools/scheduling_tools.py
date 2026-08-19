@@ -17,6 +17,7 @@ from livekit.agents import function_tool
 
 from data import db
 from shared.spoken import spoken_when
+from workplane import emr
 
 log = logging.getLogger("workplane.tools")
 
@@ -68,6 +69,8 @@ def build_scheduling_tools(matches: list[dict]) -> list:
             return "That shift is already being handled."
         await db.log_event("frontdesk", "callout_recorded", shift_id=shift["id"],
                            nurse_id=nurse["id"], payload={"reason": reason})
+        await emr.post_chart_event("callout_documented", shift,
+                                   nurse_id=nurse["id"], details={"reason": reason})
         when = spoken_when(shift["starts_at"], shift["ends_at"])
         return (f"Callout recorded for your {when} shift, {nurse['name']}. "
                 "Replacement outreach has already started — nothing else is "
