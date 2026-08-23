@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, FastForward, Pause, Phone, Play, Radio, RotateCcw } from "lucide-react";
+import { ChevronLeft, FastForward, FlaskConical, Pause, Phone, Play, Radio, RotateCcw } from "lucide-react";
 import { StoryGraph } from "@/components/ops/StoryGraph";
 import { EventLog } from "@/components/ops/EventLog";
 import { WorkflowRail } from "@/components/ops/WorkflowRail";
@@ -145,6 +145,14 @@ function Index() {
             <Phone className="h-4 w-4 text-accepted" strokeWidth={2.4} />
             <span className="tabular-nums">{AGENCY_PHONE}</span>
           </a>
+          <Link
+            to="/evals"
+            title="Eval Lab — regression checks, scorecards and model benchmarks"
+            className="clay-pill flex items-center gap-2 rounded-full px-4 py-2.5 text-[12px] font-semibold text-foreground transition-transform hover:-translate-y-0.5"
+          >
+            <FlaskConical className="h-4 w-4 text-router" strokeWidth={2.4} />
+            eval lab
+          </Link>
           <div className="clay-pill flex items-center gap-1 rounded-full p-1">
             {(["live", "demo"] as Mode[]).map((m) => (
               <button

@@ -1,7 +1,11 @@
 # Rock Scheduler eval harness. Everything runs through the repo venv.
 PY := .venv/bin/python
 
-.PHONY: test-l1 test-l2 test-oracle eval eval-one bench baseline-promote
+.PHONY: test-l1 test-l2 test-oracle eval eval-one eval-server bench baseline-promote
+
+# API for the ops console's Evals pages (http://localhost:8321, eval DB only).
+eval-server:
+	$(PY) -m evals.server
 
 test-l1:
 	$(PY) -m pytest -c evals/pytest.ini evals/tests/test_l1_ladder.py \

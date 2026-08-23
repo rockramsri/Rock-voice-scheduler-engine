@@ -17,7 +17,7 @@ import uuid as uuidlib
 from datetime import UTC, datetime
 from pathlib import Path
 
-from evals import oracle, seed
+from evals import bus, oracle, seed
 from evals.contracts import (CallTranscript, RunArtifacts, Scenario, Span,
                              Timings, Turn)
 
@@ -127,11 +127,19 @@ async def run_once(scenario: Scenario, run_idx: int) -> dict:
             history = persona_result.all_messages()
             nurse_text = persona_result.output.strip()
             transcript.turns.append(Turn(role="user", text=nurse_text, ts=datetime.now(UTC)))
+            bus.emit("turn", scenario=scenario.scenario_id, run_idx=run_idx,
+                     role="user", text=nurse_text)
 
             started = time.monotonic()
+            n_spans = len(spans)
             reply = await _reply_like_the_webhook(phone, nurse_text, spans)
             per_turn_ms.append((time.monotonic() - started) * 1000)
+            for span in spans[n_spans:]:
+                bus.emit("tool", scenario=scenario.scenario_id, run_idx=run_idx,
+                         name=span.tool, args=span.args)
             transcript.turns.append(Turn(role="agent", text=reply, ts=datetime.now(UTC)))
+            bus.emit("turn", scenario=scenario.scenario_id, run_idx=run_idx,
+                     role="agent", text=reply)
 
             state = seed.client().table("offers").select("state").eq(
                 "id", meta["offer_id"]).execute().data[0]["state"]
@@ -177,6 +185,7 @@ async def run_scenario(path: str | Path, k: int | None = None) -> list[dict]:
     trials = k or scenario.k_trials
     results = []
     for i in range(trials):
+        bus.emit("run_start", scenario=scenario.scenario_id, run_idx=i, k=trials)
         result = await run_once(scenario, i)
         flag = "PASS" if result["verdict"] == "CONFIRMED_CORRECT" else result["verdict"]
         judge_note = ("" if result["judge_all_yes"] is None
@@ -185,6 +194,10 @@ async def run_scenario(path: str | Path, k: int | None = None) -> list[dict]:
               f"ttfa={result['ttfa_ms']}ms{judge_note}")
         for line in result["failed"]:
             print(f"         FAIL {line}")
+        bus.emit("run_result", scenario=scenario.scenario_id, run_idx=i,
+                 verdict=result["verdict"], turns=result["turns"],
+                 ttfa_ms=result["ttfa_ms"], judge_all_yes=result["judge_all_yes"],
+                 failed=result["failed"])
         results.append(result)
     return results
 

@@ -140,6 +140,7 @@ async def run_once(scenario, run_idx: int) -> dict:
 
     from livekit.agents import AgentSession
 
+    from evals import bus
     from evals import judge as judge_mod
     from evals import oracle, seed
     from evals.contracts import CallTranscript, RunArtifacts, Span, Timings, Turn
@@ -173,6 +174,8 @@ async def run_once(scenario, run_idx: int) -> dict:
                 nurse_text = persona_result.output.strip()
                 transcript.turns.append(Turn(role="user", text=nurse_text,
                                              ts=datetime.now(UTC)))
+                bus.emit("turn", scenario=scenario.scenario_id, run_idx=run_idx,
+                         role="user", text=nurse_text)
                 started = time.monotonic()
                 result = await session.run(user_input=nurse_text)
                 per_turn_ms.append((time.monotonic() - started) * 1000)
@@ -180,7 +183,10 @@ async def run_once(scenario, run_idx: int) -> dict:
                 for ev in result.events:
                     item = getattr(ev, "item", ev)
                     name = getattr(item, "name", None)
-                    if name in {"accept_this_shift", "decline_this_shift"}:
+                    # function_call only — the function_call_output item carries
+                    # the same name and would double-count the span.
+                    if (name in {"accept_this_shift", "decline_this_shift"}
+                            and getattr(item, "type", "function_call") == "function_call"):
                         args = getattr(item, "arguments", None)
                         if isinstance(args, str):
                             import json
@@ -192,6 +198,9 @@ async def run_once(scenario, run_idx: int) -> dict:
                                           agent="offer_agent", tool=name,
                                           args=args if isinstance(args, dict) else None,
                                           ts=datetime.now(UTC)))
+                        bus.emit("tool", scenario=scenario.scenario_id,
+                                 run_idx=run_idx, name=name,
+                                 args=args if isinstance(args, dict) else None)
                     role = getattr(item, "role", None)
                     text = getattr(item, "text_content", None) or getattr(item, "content", None)
                     if role == "assistant" and text:
@@ -199,6 +208,8 @@ async def run_once(scenario, run_idx: int) -> dict:
                             text = " ".join(str(x) for x in text)
                         transcript.turns.append(Turn(role="agent", text=str(text),
                                                      ts=datetime.now(UTC)))
+                        bus.emit("turn", scenario=scenario.scenario_id,
+                                 run_idx=run_idx, role="agent", text=str(text))
                 from data import db
                 fresh = await db.get_offer_full(offer["id"])
                 if fresh and fresh["state"] not in ("scored", "messaged", "calling", "fallback"):
@@ -240,11 +251,13 @@ async def run_once(scenario, run_idx: int) -> dict:
 
 
 async def run_scenario(path, k: int | None = None) -> list[dict]:
+    from evals import bus
     from evals.contracts import Scenario
     scenario = Scenario.load(path)
     trials = k or scenario.k_trials
     results = []
     for i in range(trials):
+        bus.emit("run_start", scenario=scenario.scenario_id, run_idx=i, k=trials)
         result = await run_once(scenario, i)
         flag = "PASS" if result["verdict"] == "CONFIRMED_CORRECT" else result["verdict"]
         judge_note = ("" if result["judge_all_yes"] is None
@@ -253,6 +266,10 @@ async def run_scenario(path, k: int | None = None) -> list[dict]:
               f"ttfa={result['ttfa_ms']}ms{judge_note}")
         for line in result["failed"]:
             print(f"         FAIL {line}")
+        bus.emit("run_result", scenario=scenario.scenario_id, run_idx=i,
+                 verdict=result["verdict"], turns=result["turns"],
+                 ttfa_ms=result["ttfa_ms"], judge_all_yes=result["judge_all_yes"],
+                 failed=result["failed"])
         results.append(result)
     return results
 
