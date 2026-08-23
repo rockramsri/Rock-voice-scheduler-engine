@@ -1,0 +1,26 @@
+# Copy into .github/workflows/evals.yml when you want CI to own the gate.
+# Secrets: EVAL_SUPABASE_URL, EVAL_SUPABASE_SERVICE_ROLE_KEY,
+#          OPENAI_API_KEY, ANTHROPIC_API_KEY
+name: evals
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: python -m pip install -r requirements.txt pytest pytest-asyncio
+      - run: python -m evals.suite --skip-l2
+        env:
+          EVAL_SUPABASE_URL: ${{ secrets.EVAL_SUPABASE_URL }}
+          EVAL_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.EVAL_SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scorecard
+          path: evals/scorecard.md

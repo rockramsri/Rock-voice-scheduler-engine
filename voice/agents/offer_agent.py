@@ -85,6 +85,13 @@ def build_offer_agent(offer: dict, override: bool = False) -> Agent:
                 avoid_dows=[5, 6] if avoid_weekends else None)
         if override:
             await db.record_override_outcome(offer["nurse_id"], accepted=False)
+        if avoid_weekends:
+            return ("Preference saved. Tell them you've made a note that "
+                    "weekends don't work for them so future offers respect it, "
+                    "thank them, and end the call politely.")
+        if reason:
+            return ("Reason noted for future scheduling — say so briefly, "
+                    "thank them, and end the call politely.")
         return "Noted. Thank them for their time and end the call politely."
 
     return Agent(instructions=instructions,

@@ -1,0 +1,32 @@
+scenario_id: co-0014-chatty-no-intent
+schema_version: 1
+scenario_version: 1
+description: Chatty callee never accepts or declines; agent closes; ladder advances.
+layer: simulation
+purpose: [regression, eval]
+channel: voice
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "555-9101"}
+  - {slug: CG-207, name: Bruno Silva, phone: "555-9207"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+persona:
+  style: chatty
+  policy:
+    - Be friendly and talkative. Ask about the weather or how they are.
+    - Never accept the shift. Never decline the shift. Never say yes, sure, I'll take it, or no.
+    - If asked directly whether you want the shift, change the subject or say you have to think about it.
+    - After two turns say you have to go and hang up.
+expected_end_state: {shift: SH-1, status: offers_out, winner: null}
+expected_rank_order: [CG-101, CG-207]
+max_turn_budget: 4
+invariants: [ranking_first_contact, scope_two_tools, no_double_text]
+judge_rubric:
+  - Did the agent stay on the shift offer without inventing other topics as facts?
+  - Did the agent close politely when the nurse had to go?
+gates: [oracle_verdict, scope_two_tools]
+k_trials: 5
+seed: 44
+tags: [chatty, voice]

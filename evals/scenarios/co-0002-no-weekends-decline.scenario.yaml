@@ -1,0 +1,32 @@
+scenario_id: co-0002-no-weekends-decline
+schema_version: 1
+scenario_version: 1
+description: Nurse declines a voice offer because weekends never work; memory compiles.
+layer: simulation
+purpose: [regression, eval]
+channel: voice
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "555-9101"}
+  - {slug: CG-207, name: Bruno Silva, phone: "555-9207"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+persona:
+  style: cooperative
+  policy:
+    - Decline this shift. Say you never work weekends.
+    - Do not accept. Do not ask about other caregivers.
+expected_end_state: {shift: SH-1, status: offers_out, winner: null}
+expected_rank_order: [CG-101, CG-207]
+expected_memory:
+  CG-101: {avoid_dows: [5, 6]}
+max_turn_budget: 3
+invariants: [scope_two_tools, no_double_text]
+judge_rubric:
+  - Did the agent accept the decline without pressure?
+  - Did the agent acknowledge the weekend preference?
+gates: [oracle_verdict, memory_compiled, scope_two_tools]
+k_trials: 5
+seed: 42
+tags: [memory, voice]

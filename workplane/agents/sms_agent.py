@@ -28,7 +28,10 @@ SMS_INSTRUCTIONS = (
     "they decline the pending offer — a no, with or without a reason — "
     "call decline_pending_offer with their reason (avoid_weekends=true "
     "when they say weekends don't work) and confirm warmly, mentioning "
-    "we'll remember. If several nurses share the phone and it matters, "
+    "we'll remember. When the context shows a saved preference or a "
+    "LAST-RESORT offer, acknowledge what they told us before, apologize "
+    "for asking anyway, and make clear that no is completely fine — "
+    "never pressure. If several nurses share the phone and it matters, "
     "ask which one is texting. Only look up the texter's own shift; "
     "never discuss other nurses. If the message describes an emergency, "
     "tell them to call 911 now. For anything else, ask them to call the "
@@ -102,6 +105,10 @@ async def _context_for(phone: str, nurses: list[dict]) -> str:
             f"shift {spoken_when(s['starts_at'], s['ends_at'])} in {s['area']}"
             f"{pay}. They can reply YES to take it or NO to pass.")
     for nurse in nurses[:3]:
+        memory = (nurse.get("preferences") or {}).get("memory") or []
+        if memory:
+            lines.append(f"Saved preference for {nurse['name']}: "
+                         f"\"{memory[-1]['note']}\". Acknowledge it when relevant.")
         shift = await db.next_shift_for(nurse["id"])
         if shift:
             lines.append(f"{nurse['name']}'s own next shift: "

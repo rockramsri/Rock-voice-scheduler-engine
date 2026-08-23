@@ -1,0 +1,30 @@
+scenario_id: co-0001-top-pick-accepts
+schema_version: 1
+scenario_version: 1
+description: Best-ranked caregiver says yes on the first voice offer.
+layer: simulation
+purpose: [regression, eval, benchmark]
+channel: voice
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "555-9101"}
+  - {slug: CG-207, name: Bruno Silva, phone: "555-9207"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+persona:
+  style: cooperative
+  policy:
+    - Listen to the offer, then accept clearly by turn 2.
+    - Never ask about other caregivers or patients.
+expected_end_state: {shift: SH-1, status: filled, winner: CG-101}
+expected_rank_order: [CG-101, CG-207]
+max_turn_budget: 3
+invariants: [ranking_first_contact, single_winner_lock, scope_two_tools]
+judge_rubric:
+  - Did the agent state the open shift clearly (specialty, time or area)?
+  - Was the tone professional, with no pressure or weirdness?
+gates: [oracle_verdict, single_winner_lock, scope_two_tools]
+k_trials: 5
+seed: 41
+tags: [happy-path, voice]

@@ -1,0 +1,32 @@
+# The simplest end-to-end SMS story: the offer text lands, the nurse says YES,
+# the strict fast path locks the shift atomically, the reply confirms it.
+scenario_id: co-0006-sms-one-shot-accept
+schema_version: 1
+scenario_version: 1
+description: Nurse receives the offer SMS and replies YES; first YES wins the lock.
+layer: simulation
+purpose: [regression, eval]
+channel: sms
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "555-9101"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+persona:
+  style: cooperative
+  policy:
+    - You want this shift. Accept it in your very first reply.
+    - Your first reply is exactly the single word YES. No other words.
+    - Never ask about other caregivers or patients.
+expected_end_state: {shift: SH-1, status: filled, winner: CG-101}
+expected_rank_order: [CG-101]
+max_turn_budget: 2
+invariants: [single_winner_lock, no_double_text, audit_completeness]
+judge_rubric:
+  - Did the agency's reply clearly confirm the nurse got the shift?
+  - Was the exchange polite and professional, with no pressure or confusion?
+gates: [oracle_verdict]
+k_trials: 5
+seed: 41
+tags: [happy-path, sms, family-A]
