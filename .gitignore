@@ -4,3 +4,10 @@ __pycache__/
 *.pyc
 node_modules/
 .DS_Store
+# demo-gif raw recordings
+ops-console/scripts/demo-gif/raw/
+# eval harness: secrets + per-run evidence
+evals/.env.eval
+evals/artifacts/
+evals/ARCHITECTURE.md
+ops-console/src/routes/evals.tsx
