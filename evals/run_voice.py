@@ -111,15 +111,30 @@ async def _after_call(shift_id: str, agency: dict) -> None:
     """One worker burst so a lone decline / no-intent can escalate or advance.
 
     Outbound SMS/calls are patched to no-ops so nothing leaves the machine.
+
+    The burst runs on a clock clamped into the agency's call window: quiet
+    hours (22:00-06:00 local) legitimately PARK voice work until morning, so
+    a suite run at night would flip co-0003 from escalated to offers_out —
+    caught as a 0/5 REGRESSION at 23:30 after passing 5/5 all afternoon.
+    Verdicts must never depend on when the suite runs.
     """
+    from datetime import UTC, timedelta
     from unittest.mock import AsyncMock, patch
+    from zoneinfo import ZoneInfo
 
     from data import db
-    from workers import dispatch_worker
+    from workers import dispatch_worker, ladder, rungs
 
     shift = await db.get_shift(shift_id)
     if not shift or shift["status"] not in ("callout", "offers_out"):
         return
+    frozen = rungs.now()
+    if not ladder.in_call_window(frozen, agency):
+        local = frozen.astimezone(ZoneInfo(agency["timezone"]))
+        if local.hour < agency["quiet_end"]:     # small hours -> prior evening
+            local -= timedelta(days=1)
+        frozen = local.replace(hour=agency["quiet_start"] - 2, minute=0,
+                               second=0, microsecond=0).astimezone(UTC)
     # Stale any live 'calling' row so voice_rung re-evaluates instead of waiting.
     for offer in await db.offers_for_shift(shift_id, states=["calling"]):
         await db.set_offer_state(offer["id"], "no_answer", ["calling"])
@@ -128,7 +143,8 @@ async def _after_call(shift_id: str, agency: dict) -> None:
           patch("channels.sms.send_whatsapp", new_callable=AsyncMock,
                 return_value={"ok": True}),
           patch("channels.outbound.place_call", new_callable=AsyncMock,
-                return_value={"ok": True})):
+                return_value={"ok": True}),
+          patch("workers.rungs.now", new=lambda: frozen)):
         await dispatch_worker._handle(await db.get_shift(shift_id), agency)
 
 
