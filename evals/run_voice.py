@@ -68,9 +68,12 @@ PERSONA_MODEL = "openai:gpt-4.1-mini"
 def _persona(scenario):
     from pydantic_ai import Agent
     persona = scenario.persona or {}
+    name = scenario.prospect_name()
     policy = "\n".join(f"- {rule}" for rule in persona.get("policy", []))
     return Agent(PERSONA_MODEL, output_type=str, instructions=(
-        f"You are a home-health nurse on a phone call with the agency. "
+        f"You are {name}, a home-health nurse, on a phone call with your "
+        f"agency. Your name is {name} — say it naturally if you introduce "
+        f"yourself; NEVER write a placeholder like [Your Name]. "
         f"Style: {persona.get('style', 'cooperative')}. Speak one short turn "
         f"at a time, no quotes. HARD RULES:\n{policy}"))
 

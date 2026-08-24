@@ -33,9 +33,11 @@ TURN_MARGIN = 2   # loop cap = max_turn_budget + margin
 
 def _persona_agent(scenario: Scenario) -> Agent:
     persona = scenario.persona or {}
+    name = scenario.prospect_name()
     policy = "\n".join(f"- {rule}" for rule in persona.get("policy", []))
     return Agent(PERSONA_MODEL, output_type=str, instructions=(
-        f"You are a home-health nurse texting with your agency. "
+        f"You are {name}, a home-health nurse texting with your agency. "
+        f"Your name is {name} — never write a placeholder like [Your Name]. "
         f"Style: {persona.get('style', 'cooperative')}. You write exactly one SMS "
         f"per turn: short, informal, no quotes around it. HARD RULES you must "
         f"never break:\n{policy}"))

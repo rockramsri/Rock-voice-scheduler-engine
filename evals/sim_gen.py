@@ -19,9 +19,11 @@ def to_lk_entry(scenario: Scenario, run_idx: int = 0) -> dict:
     persona = scenario.persona or {}
     policy = "\n".join(f"- {rule}" for rule in persona.get("policy", []))
     style = persona.get("style", "cooperative")
+    name = scenario.prospect_name()
     end = scenario.expected_end_state
-    goal = (f"You are a home-health nurse on a phone call. Style: {style}.\n"
-            f"HARD RULES:\n{policy}")
+    goal = (f"You are {name}, a home-health nurse, on a phone call. Your name "
+            f"is {name} — never write a placeholder like [Your Name]. "
+            f"Style: {style}.\nHARD RULES:\n{policy}")
     expectations = (scenario.model_extra.get("sim") or {}).get("agent_expectations") or (
         f"End state: {end.status if end else 'unspecified'}"
         + (f" filled by {end.winner}" if end and end.winner else "")

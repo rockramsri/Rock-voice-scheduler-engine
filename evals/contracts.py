@@ -147,3 +147,15 @@ class Scenario(BaseModel):
         if data.get("engine_profile") == "gemma_phi":
             raise ValueError(f"{data.get('scenario_id')}: gemma_phi is never evaluated")
         return cls.model_validate(data)
+
+    def prospect_name(self) -> str:
+        """The persona's identity — evals simulate the TOP-RANKED prospect.
+
+        Without a concrete name the persona LLM greets with a literal
+        '[Your Name]' placeholder, which pollutes transcripts and judge quotes.
+        """
+        slug = self.expected_rank_order[0] if self.expected_rank_order else ""
+        for row in self.roster_fixture:
+            if row.get("slug") == slug:
+                return str(row.get("name") or slug)
+        return slug or "a home-health nurse"
