@@ -178,6 +178,30 @@ function EvalLab() {
 
         {!offline && tab === "scorecards" && (
           <>
+            {!suite && (
+              <section className="clay-panel rounded-[32px] p-6 text-center">
+                <p className="text-[14px] font-bold text-foreground">
+                  No scorecards on this eval server yet.
+                </p>
+                <p className="mx-auto mt-1 max-w-[480px] text-[12px] text-muted-foreground">
+                  Suites live on the server disk. Local runs stay on your laptop;
+                  a fresh Railway box starts empty. Run a regression here to
+                  fill the lab.
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => begin({ kind: "regression" })}
+                  className="clay-pill-active mt-4 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[12px] font-bold text-router transition-transform hover:-translate-y-0.5 disabled:opacity-40"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.6} /> : <ShieldCheck className="h-4 w-4" strokeWidth={2.6} />}
+                  check regression
+                </button>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Needs the same token as Railway <code>EVALS_API_TOKEN</code>
+                </p>
+              </section>
+            )}
             {suite && (
               <section className="clay-panel rounded-[32px] p-5">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
