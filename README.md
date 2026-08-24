@@ -19,6 +19,7 @@
   <a href="#system-architecture">Architecture</a> ·
   <a href="docs/cases.md">Use cases</a> ·
   <a href="docs/memory.md">Memory</a> ·
+  <a href="evals/README.md">Evals</a> ·
   <a href="#three-ways-to-run-it">Deploy configs</a> ·
   <a href="#documentation">Docs</a>
 </p>
@@ -256,6 +257,7 @@ Rock-scheduler-voice-agent/
 ├── data/                   # schema.sql, dashboard.sql, db.py (all Postgres access), seed.py
 ├── shared/                 # config.py (the only env reader), phone.py, spoken.py
 ├── ops-console/            # React ops console: live story graph + workflow rail
+├── evals/                  # the Eval Lab: simulated nurses grade the real engine
 ├── dashboard/              # earlier react-flow prototype, superseded by ops-console
 └── docs/                   # the deep documentation, linked below
 ```
@@ -264,6 +266,7 @@ Rock-scheduler-voice-agent/
 
 | Doc | What is inside |
 | --- | --- |
+| [evals/README.md](evals/README.md) | the Eval Lab: simulated nurses vs the real engine — oracle + judge grading, pass^k scorecards, the live regression lab, with its own demo film |
 | [docs/cases.md](docs/cases.md) | the four use-case stories with sequence diagrams and the audit events to watch |
 | [docs/memory.md](docs/memory.md) | caregiver memory: write/read paths, the override ladder, self-promoting preferences |
 | [docs/architecture.md](docs/architecture.md) | component-by-component walkthrough, ER diagram, shift and offer state machines |
