@@ -1,16 +1,16 @@
-# Eval scorecard — 20260823T232643Z
+# Eval scorecard — 20260824T000825Z
 
 5 simulated scenarios, 0 regressions caught before merge, zero hallucinated verdicts (judge-oracle agreement 100.0%, pass^5 on 5/5).
 
-git `33d65d9` · engine `cascade`
+git `20b4b40` · engine `cascade`
 
 | scenario | channel | verdict | pass^k | turns | ttfa p50 | judge Δ | stability |
 |---|---|---|---|---|---|---|---|
-| co-0001-top-pick-accepts | voice | CONFIRMED_CORRECT | 5/5 ✓ | 2.0 | 902.0ms | 100.0% | stable |
-| co-0002-no-weekends-decline | voice | CONFIRMED_CORRECT | 5/5 ✓ | 2.0 | 896.5ms | 100.0% | stable |
-| co-0003-hard-no-escalates | voice | CONFIRMED_CORRECT | 5/5 ✓ | 2.0 | 854.4ms | 100.0% | stable |
-| co-0006-sms-one-shot-accept | sms | CONFIRMED_CORRECT | 5/5 ✓ | 1.0 | 247.5ms | 100.0% | stable |
-| co-0014-chatty-no-intent | voice | CONFIRMED_CORRECT | 5/5 ✓ | 3.4 | 947.1ms | 100.0% | stable |
+| co-0001-top-pick-accepts | voice | CONFIRMED_CORRECT | 5/5 ✓ | 2.0 | 916.7ms | 100.0% | stable |
+| co-0002-no-weekends-decline | voice | CONFIRMED_CORRECT | 5/5 ✓ | 2.0 | 863.0ms | 100.0% | stable |
+| co-0003-hard-no-escalates | voice | CONFIRMED_CORRECT | 5/5 ✓ | 1.8 | 937.7ms | 100.0% | stable |
+| co-0006-sms-one-shot-accept | sms | CONFIRMED_CORRECT | 5/5 ✓ | 1.0 | 244.5ms | 100.0% | stable |
+| co-0014-chatty-no-intent | voice | CONFIRMED_CORRECT | 5/5 ✓ | 3.2 | 936.5ms | 100.0% | stable |
 
 ## All metrics
 
@@ -22,8 +22,8 @@ git `33d65d9` · engine `cascade`
 | pass_k | gate | True |
 | k | track | 5 |
 | passes | track | 5 |
-| ttfa_p50_ms | track | 902.0ms |
-| full_turn_p95_ms | track | 1593.0ms |
+| ttfa_p50_ms | track | 916.7ms |
+| full_turn_p95_ms | track | 1751.1ms |
 | turns_used | track | 2 |
 | judge_oracle_agreement | track | 100.0% |
 | judge_stability | track | stable |
@@ -46,8 +46,8 @@ git `33d65d9` · engine `cascade`
 | pass_k | gate | True |
 | k | track | 5 |
 | passes | track | 5 |
-| ttfa_p50_ms | track | 896.5ms |
-| full_turn_p95_ms | track | 1636.4ms |
+| ttfa_p50_ms | track | 863.0ms |
+| full_turn_p95_ms | track | 1602.4ms |
 | turns_used | track | 2 |
 | judge_oracle_agreement | track | 100.0% |
 | judge_stability | track | stable |
@@ -70,9 +70,9 @@ git `33d65d9` · engine `cascade`
 | pass_k | gate | True |
 | k | track | 5 |
 | passes | track | 5 |
-| ttfa_p50_ms | track | 854.4ms |
-| full_turn_p95_ms | track | 1615.8ms |
-| turns_used | track | 2 |
+| ttfa_p50_ms | track | 937.7ms |
+| full_turn_p95_ms | track | 1714.4ms |
+| turns_used | track | 1.8 |
 | judge_oracle_agreement | track | 100.0% |
 | judge_stability | track | stable |
 | memory_compiled | track | MISSING |
@@ -94,8 +94,8 @@ git `33d65d9` · engine `cascade`
 | pass_k | gate | True |
 | k | track | 5 |
 | passes | track | 5 |
-| ttfa_p50_ms | track | 247.5ms |
-| full_turn_p95_ms | track | 252.5ms |
+| ttfa_p50_ms | track | 244.5ms |
+| full_turn_p95_ms | track | 295.8ms |
 | turns_used | track | 1 |
 | judge_oracle_agreement | track | 100.0% |
 | judge_stability | track | stable |
@@ -118,9 +118,9 @@ git `33d65d9` · engine `cascade`
 | pass_k | gate | True |
 | k | track | 5 |
 | passes | track | 5 |
-| ttfa_p50_ms | track | 947.1ms |
-| full_turn_p95_ms | track | 1694.3ms |
-| turns_used | track | 3.4 |
+| ttfa_p50_ms | track | 936.5ms |
+| full_turn_p95_ms | track | 1941.0ms |
+| turns_used | track | 3.2 |
 | judge_oracle_agreement | track | 100.0% |
 | judge_stability | track | stable |
 | memory_compiled | track | MISSING |

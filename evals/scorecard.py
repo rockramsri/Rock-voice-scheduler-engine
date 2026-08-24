@@ -273,6 +273,7 @@ def assemble(scenario: Scenario, runs: list[dict], *,
         },
         metrics=metrics,
         evidence={"artifacts_path": artifacts[-1] if artifacts else None,
+                  "artifacts_paths": artifacts,
                   "failing_run_idx": failing, "seed": scenario.seed},
     )
 

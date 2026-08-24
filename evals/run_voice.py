@@ -236,16 +236,19 @@ async def run_once(scenario, run_idx: int) -> dict:
         if scenario.judge_rubric:
             judged = await judge_mod.judge_transcript(transcript, scenario.judge_rubric)
             (artifacts_dir / "judge.json").write_text(judged.model_dump_json(indent=1))
-        return {"run_idx": run_idx,
-                "verdict": oracle.verdict(checks, scenario.gates),
-                "checks": {c.name: c.status for c in checks},
-                "failed": [f"{c.name}: {c.evidence}" for c in checks if c.status == "fail"],
-                "judge_all_yes": judged.all_yes if judged else None,
-                "judge_model": judged.model if judged else None,
-                "turns": transcript.agent_turns(),
-                "ttfa_ms": round(per_turn_ms[0], 1) if per_turn_ms else None,
-                "per_turn_ms": per_turn_ms,
-                "artifacts": str(artifacts_dir)}
+        import json as jsonlib
+        result = {"run_idx": run_idx,
+                  "verdict": oracle.verdict(checks, scenario.gates),
+                  "checks": {c.name: c.status for c in checks},
+                  "failed": [f"{c.name}: {c.evidence}" for c in checks if c.status == "fail"],
+                  "judge_all_yes": judged.all_yes if judged else None,
+                  "judge_model": judged.model if judged else None,
+                  "turns": transcript.agent_turns(),
+                  "ttfa_ms": round(per_turn_ms[0], 1) if per_turn_ms else None,
+                  "per_turn_ms": per_turn_ms,
+                  "artifacts": str(artifacts_dir)}
+        (artifacts_dir / "result.json").write_text(jsonlib.dumps(result, indent=1))
+        return result
     finally:
         seed.cleanup(run)
 

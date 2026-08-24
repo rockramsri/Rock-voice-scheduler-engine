@@ -6,7 +6,7 @@
  */
 
 export const EVALS_API =
-  (import.meta.env.VITE_EVALS_API_URL as string | undefined) ??
+  (import.meta.env["VITE_EVALS_API_URL"] as string | undefined) ??
   "http://localhost:8321";
 
 export interface Metric {
@@ -57,8 +57,21 @@ export interface SuiteSummary {
   kind: string;
   label: string | null;
   n_scenarios: number;
+  scenario_ids: string[];
   regressions: number;
   pass_k: number;
+}
+
+export interface Trial {
+  folder: string;
+  run_idx: number;
+  turns?: { role: string; text: string; ts?: string }[];
+  tools?: { name: string; args: unknown }[];
+  ttfa_ms?: number | null;
+  verdict?: string;
+  failed?: string[];
+  judge_all_yes?: boolean | null;
+  judge?: { answers: { question: string; verdict: boolean; quote: string }[]; model: string };
 }
 
 export interface SuiteDetail {
@@ -133,6 +146,10 @@ export const fetchSuite = (sid: string) => get<SuiteDetail>(`/api/suites/${sid}`
 export const fetchLatest = () => get<SuiteDetail>("/api/latest");
 export const fetchBaseline = () => get<{ scorecards: Scorecard[] }>("/api/baseline");
 export const fetchRuns = () => get<Omit<RunRecord, "events">[]>("/api/runs");
+export const fetchTranscripts = (suite: string, scenario: string) =>
+  get<{ suite: string; scenario: string; trials: Trial[] }>(
+    `/api/transcripts?suite=${suite}&scenario=${scenario}`,
+  );
 export const fetchRun = (rid: string) => get<RunRecord>(`/api/runs/${rid}`);
 export const fetchCompare = (left: string, right: string) =>
   get<{

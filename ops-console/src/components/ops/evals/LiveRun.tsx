@@ -6,15 +6,15 @@ interface TrialView {
   turns: { role: string; text: string }[];
   tools: { name: string; args: unknown }[];
   order: { type: "turn" | "tool"; index: number }[];
-  verdict?: string;
-  ttfa_ms?: number;
-  failed?: string[];
-  judge?: boolean | null;
+  verdict?: string | undefined;
+  ttfa_ms?: number | undefined;
+  failed?: string[] | undefined;
+  judge?: boolean | null | undefined;
 }
 
 interface ScenarioView {
   id: string;
-  channel?: string;
+  channel?: string | undefined;
   k: number;
   trials: Map<number, TrialView>;
   done: boolean;
@@ -22,7 +22,7 @@ interface ScenarioView {
 
 interface RunView {
   status: string;
-  stages: { name: string; status: string; summary?: string }[];
+  stages: { name: string; status: string; summary?: string | undefined }[];
   logs: string[];
   scenarios: Map<string, ScenarioView>;
   verdict?: string;
@@ -34,28 +34,28 @@ interface RunView {
 function fold(events: RunEvent[]): RunView {
   const view: RunView = { status: "running", stages: [], logs: [], scenarios: new Map(), gateBlocks: [] };
   for (const e of events) {
-    const sid = e.scenario as string | undefined;
-    const idx = e.run_idx as number | undefined;
+    const sid = e["scenario"] as string | undefined;
+    const idx = e["run_idx"] as number | undefined;
     const scenario = sid ? view.scenarios.get(sid) : undefined;
     const trial = scenario && idx !== undefined ? scenario.trials.get(idx) : undefined;
     switch (e.kind) {
       case "stage": {
-        const existing = view.stages.find((s) => s.name === e.name);
+        const existing = view.stages.find((s) => s.name === e["name"]);
         if (existing) {
-          existing.status = e.status as string;
-          existing.summary = e.summary as string | undefined;
+          existing.status = e["status"] as string;
+          existing.summary = e["summary"] as string | undefined;
         } else {
-          view.stages.push({ name: e.name as string, status: e.status as string });
+          view.stages.push({ name: e["name"] as string, status: e["status"] as string });
         }
         break;
       }
       case "log":
-        view.logs.push(e.line as string);
+        view.logs.push(e["line"] as string);
         if (view.logs.length > 200) view.logs.shift();
         break;
       case "scenario_start":
         view.scenarios.set(sid!, {
-          id: sid!, channel: e.channel as string, k: (e.k as number) ?? 1,
+          id: sid!, channel: e["channel"] as string, k: (e["k"] as number) ?? 1,
           trials: new Map(), done: false,
         });
         break;
@@ -64,22 +64,22 @@ function fold(events: RunEvent[]): RunView {
         break;
       case "turn":
         if (trial) {
-          trial.turns.push({ role: e.role as string, text: e.text as string });
+          trial.turns.push({ role: e["role"] as string, text: e["text"] as string });
           trial.order.push({ type: "turn", index: trial.turns.length - 1 });
         }
         break;
       case "tool":
         if (trial) {
-          trial.tools.push({ name: e.name as string, args: e.args });
+          trial.tools.push({ name: e["name"] as string, args: e["args"] });
           trial.order.push({ type: "tool", index: trial.tools.length - 1 });
         }
         break;
       case "run_result":
         if (trial) {
-          trial.verdict = e.verdict as string;
-          trial.ttfa_ms = e.ttfa_ms as number;
-          trial.failed = e.failed as string[];
-          trial.judge = e.judge_all_yes as boolean | null;
+          trial.verdict = e["verdict"] as string;
+          trial.ttfa_ms = e["ttfa_ms"] as number;
+          trial.failed = e["failed"] as string[];
+          trial.judge = e["judge_all_yes"] as boolean | null;
         }
         break;
       case "scenario_done":
@@ -87,13 +87,13 @@ function fold(events: RunEvent[]): RunView {
         break;
       case "run_done":
         view.status = "done";
-        view.verdict = e.verdict as string;
-        view.suiteId = e.suite_id as string;
-        view.gateBlocks = (e.gate_blocks as RunView["gateBlocks"]) ?? [];
+        view.verdict = e["verdict"] as string;
+        view.suiteId = e["suite_id"] as string;
+        view.gateBlocks = (e["gate_blocks"] as RunView["gateBlocks"]) ?? [];
         break;
       case "run_error":
         view.status = "error";
-        view.error = e.error as string;
+        view.error = e["error"] as string;
         break;
     }
   }

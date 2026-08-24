@@ -47,13 +47,10 @@ export function BenchmarkForm({
       for (const [key, value] of Object.entries(models)) {
         if (value.trim()) overrides[key] = value.trim();
       }
-      if (label.trim()) overrides.label = label.trim();
-      const { run_id } = await startRun({
-        kind: "benchmark",
-        scenarios: picked.size ? [...picked] : undefined,
-        k,
-        overrides,
-      });
+      if (label.trim()) overrides["label"] = label.trim();
+      const body: Parameters<typeof startRun>[0] = { kind: "benchmark", k, overrides };
+      if (picked.size) body.scenarios = [...picked];
+      const { run_id } = await startRun(body);
       onStarted(run_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

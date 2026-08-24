@@ -246,6 +246,7 @@ def _suite_summary(folder: Path) -> dict | None:
         "kind": meta.get("kind", "suite"),
         "label": (meta.get("overrides") or {}).get("label"),
         "n_scenarios": len(cards),
+        "scenario_ids": [c.get("scenario_id") for c in cards],
         "regressions": sum(1 for c in cards
                            if c.get("deterministic", {}).get("oracle_verdict")
                            == "REGRESSION"),
@@ -313,6 +314,48 @@ async def baseline(_req: web.Request) -> web.Response:
             if path.name != "suite.json":
                 cards.append(json.loads(path.read_text()))
     return web.json_response({"scorecards": cards})
+
+
+async def transcripts(req: web.Request) -> web.Response:
+    """Every trial's transcript/tools/judge/verdict for one scorecard,
+    read from the per-trial evidence folders that outlive the server."""
+    sid, scen = req.query.get("suite", ""), req.query.get("scenario", "")
+    card_path = SUITES_DIR / sid / f"{scen}.json"
+    if not card_path.exists():
+        return web.json_response({"error": "scorecard not found"}, status=404)
+    card = json.loads(card_path.read_text())
+    evidence = card.get("evidence") or {}
+    paths = evidence.get("artifacts_paths") or (
+        [evidence["artifacts_path"]] if evidence.get("artifacts_path") else [])
+    root = str(ARTIFACTS_DIR.resolve())
+    trials = []
+    for raw in paths:
+        folder = Path(raw)
+        if not str(folder.resolve()).startswith(root) or not folder.exists():
+            continue
+        trial: dict = {"folder": folder.name}
+        art_file = folder / "artifacts.json"
+        if art_file.exists():
+            art = json.loads(art_file.read_text())
+            trial["run_idx"] = art.get("run_idx", 0)
+            first = (art.get("transcripts") or [{}])[0]
+            trial["turns"] = first.get("turns", [])
+            trial["tools"] = [{"name": s.get("tool"), "args": s.get("args")}
+                              for s in art.get("spans", [])]
+            trial["ttfa_ms"] = (art.get("timings") or {}).get("ttfa_ms")
+        result_file = folder / "result.json"
+        if result_file.exists():
+            result = json.loads(result_file.read_text())
+            trial.update(run_idx=result.get("run_idx", trial.get("run_idx", 0)),
+                         verdict=result.get("verdict"),
+                         failed=result.get("failed", []),
+                         judge_all_yes=result.get("judge_all_yes"))
+        judge_file = folder / "judge.json"
+        if judge_file.exists():
+            trial["judge"] = json.loads(judge_file.read_text())
+        trials.append(trial)
+    trials.sort(key=lambda t: t.get("run_idx", 0))
+    return web.json_response({"suite": sid, "scenario": scen, "trials": trials})
 
 
 async def compare_suites(req: web.Request) -> web.Response:
@@ -446,6 +489,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/suites/{sid}", suite_detail)
     app.router.add_get("/api/latest", latest)
     app.router.add_get("/api/baseline", baseline)
+    app.router.add_get("/api/transcripts", transcripts)
     app.router.add_get("/api/compare", compare_suites)
     app.router.add_post("/api/runs", start_run)
     app.router.add_get("/api/runs", list_runs)

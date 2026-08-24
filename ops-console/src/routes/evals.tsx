@@ -7,7 +7,10 @@ import {
 import { BenchmarkForm } from "@/components/ops/evals/BenchmarkForm";
 import { CompareSuites } from "@/components/ops/evals/CompareSuites";
 import { LiveRun } from "@/components/ops/evals/LiveRun";
+import { ScenarioDeck } from "@/components/ops/evals/ScenarioDeck";
 import { ScorecardCard } from "@/components/ops/evals/ScorecardCard";
+import { SuitePopup } from "@/components/ops/evals/SuitePopup";
+import { TranscriptModal } from "@/components/ops/evals/TranscriptModal";
 import {
   fetchHealth, fetchLatest, fetchRuns, fetchScenarios, fetchSuite,
   fetchSuites, promoteBaseline, startRun,
@@ -33,7 +36,8 @@ function EvalLab() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("scorecards");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [viewSuite, setViewSuite] = useState<string | null>(null);
+  const [popupSuite, setPopupSuite] = useState<string | null>(null);
+  const [transcriptFor, setTranscriptFor] = useState<{ suite: string; scenario: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
 
@@ -41,18 +45,17 @@ function EvalLab() {
   const scenarios = useQuery({ queryKey: ["evals-scenarios"], queryFn: fetchScenarios, enabled: !!health.data });
   const suites = useQuery({ queryKey: ["evals-suites"], queryFn: fetchSuites, refetchInterval: 8000, enabled: !!health.data });
   const latest = useQuery({ queryKey: ["evals-latest"], queryFn: fetchLatest, refetchInterval: 8000, enabled: !!health.data, retry: false });
-  const picked = useQuery({
-    queryKey: ["evals-suite", viewSuite],
-    queryFn: () => fetchSuite(viewSuite!),
-    enabled: !!viewSuite && !!health.data,
-  });
   const runs = useQuery({ queryKey: ["evals-runs"], queryFn: fetchRuns, refetchInterval: 6000, enabled: !!health.data });
 
   const offline = health.isError;
   const busy = !!health.data?.busy;
-  const suite = viewSuite ? picked.data : latest.data;
-  const descriptions = useMemo(
-    () => new Map((scenarios.data ?? []).map((s) => [s.scenario_id, s.description])),
+  const suite = latest.data;
+  const scenarioInfo = useMemo(
+    () => new Map((scenarios.data ?? []).map((s) => [s.scenario_id, s])),
+    [scenarios.data],
+  );
+  const allScenarioIds = useMemo(
+    () => (scenarios.data ?? []).map((s) => s.scenario_id),
     [scenarios.data],
   );
 
@@ -81,7 +84,7 @@ function EvalLab() {
 
   const gateBlocked = (suite?.gate_blocks?.length ?? 0) > 0;
   const regressions = suite
-    ? suite.scorecards.filter((c) => c.deterministic.oracle_verdict === "REGRESSION").length
+    ? suite.scorecards.filter((c) => c.deterministic["oracle_verdict"] === "REGRESSION").length
     : 0;
 
   return (
@@ -216,15 +219,28 @@ function EvalLab() {
             )}
 
             {suite && (
+              <div className="flex items-baseline justify-between px-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Current scorecards — the reference the gate compares against
+                </span>
+                <span className="text-[10.5px] text-muted-foreground">
+                  older runs live in the deck history below
+                </span>
+              </div>
+            )}
+            {suite && (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {suite.scorecards.map((card) => (
                   <ScorecardCard
                     key={card.scenario_id}
                     card={card}
                     deltas={suite.baseline_deltas[card.scenario_id]}
-                    description={descriptions.get(card.scenario_id)}
+                    description={scenarioInfo.get(card.scenario_id)?.description}
+                    turnBudget={scenarioInfo.get(card.scenario_id)?.max_turn_budget}
                     busy={busy}
                     onQuickRun={(id) => begin({ kind: "scenario", scenarios: [id], k: 1 })}
+                    onTranscripts={(id) =>
+                      setTranscriptFor({ suite: suite.suite_run_id, scenario: id })}
                   />
                 ))}
               </div>
@@ -233,32 +249,31 @@ function EvalLab() {
             {(suites.data?.length ?? 0) > 0 && (
               <section className="clay-panel rounded-[32px] p-5">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Suite history
+                  Suite history — click a deck to fan it out
                 </span>
-                <div className="mt-3 flex flex-col gap-2">
-                  {suites.data!.slice(0, 10).map((s) => {
-                    const active = (viewSuite ?? latest.data?.suite_run_id) === s.suite_run_id;
-                    return (
-                      <button
-                        key={s.suite_run_id}
-                        type="button"
-                        onClick={() => setViewSuite(s.suite_run_id === latest.data?.suite_run_id ? null : s.suite_run_id)}
-                        className={`${active ? "clay-card-active" : "clay-row"} grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-4 py-2.5 text-left transition-transform hover:-translate-y-0.5`}
-                      >
-                        <span className="font-mono text-[11px] tabular-nums text-foreground">{s.suite_run_id}</span>
-                        <span className="clay-chip rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                          {s.label ?? s.kind}
-                        </span>
-                        <span className="truncate text-[11px] text-muted-foreground">{s.headline}</span>
-                        <span
-                          className="text-[11px] font-bold tabular-nums"
-                          style={{ color: s.regressions ? "var(--ring-escalated)" : "var(--ring-accepted)" }}
-                        >
-                          {s.pass_k}/{s.n_scenarios} pass^k
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                  {suites.data!.slice(0, 10).map((s) => (
+                    <ScenarioDeck
+                      key={s.suite_run_id}
+                      scenarioIds={s.scenario_ids ?? []}
+                      title={s.suite_run_id}
+                      subtitle={s.headline}
+                      onOpen={() => setPopupSuite(s.suite_run_id)}
+                      trailing={
+                        <>
+                          <span className="clay-chip rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                            {s.label ?? s.kind}
+                          </span>
+                          <span
+                            className="text-[11px] font-bold tabular-nums"
+                            style={{ color: s.regressions ? "var(--ring-escalated)" : "var(--ring-accepted)" }}
+                          >
+                            {s.pass_k}/{s.n_scenarios} pass^k
+                          </span>
+                        </>
+                      }
+                    />
+                  ))}
                 </div>
               </section>
             )}
@@ -277,38 +292,35 @@ function EvalLab() {
             {(runs.data?.length ?? 0) > 0 && (
               <section className="clay-panel rounded-[32px] p-5">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Runs this session
+                  Runs this session — click a deck to fan it out
                 </span>
-                <div className="mt-3 flex flex-col gap-2">
+                <div className="mt-3 grid gap-3 xl:grid-cols-2">
                   {runs.data!.map((r) => (
-                    <button
+                    <ScenarioDeck
                       key={r.id}
-                      type="button"
-                      onClick={() => setActiveRunId(r.id)}
-                      className="clay-row grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-4 py-2.5 text-left transition-transform hover:-translate-y-0.5"
-                    >
-                      <span className="clay-chip rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.1em] text-router">
-                        {r.kind}
-                      </span>
-                      <span className="font-mono text-[11px] text-muted-foreground">{r.id}</span>
-                      <span className="truncate text-[11px] text-muted-foreground">
-                        {(r.config.scenarios ?? ["all scenarios"]).join(", ")}
-                        {r.config.k ? ` · k=${r.config.k}` : ""}
-                        {Object.keys(r.config.overrides).length
-                          ? ` · ${Object.entries(r.config.overrides).map(([k2, v]) => `${k2}=${v}`).join(" ")}`
-                          : ""}
-                      </span>
-                      <span
-                        className="text-[11px] font-bold uppercase"
-                        style={{
-                          color: r.status === "running" ? "var(--ring-calling)"
-                            : r.status === "error" || r.verdict === "BLOCKED" || r.verdict === "REGRESSION"
-                              ? "var(--ring-escalated)" : "var(--ring-accepted)",
-                        }}
-                      >
-                        {r.status === "done" ? r.verdict ?? "done" : r.status}
-                      </span>
-                    </button>
+                      scenarioIds={r.config.scenarios ?? allScenarioIds}
+                      title={`${r.kind} · ${r.id}`}
+                      subtitle={[
+                        r.config.k ? `k=${r.config.k}` : null,
+                        ...Object.entries(r.config.overrides).map(([k2, v]) => `${k2}=${v}`),
+                      ].filter(Boolean).join(" · ") || "defaults"}
+                      onOpen={() =>
+                        r.status === "done" && r.suite_id
+                          ? setPopupSuite(r.suite_id)
+                          : setActiveRunId(r.id)}
+                      trailing={
+                        <span
+                          className="text-[11px] font-bold uppercase"
+                          style={{
+                            color: r.status === "running" ? "var(--ring-calling)"
+                              : r.status === "error" || r.verdict === "BLOCKED" || r.verdict === "REGRESSION"
+                                ? "var(--ring-escalated)" : "var(--ring-accepted)",
+                          }}
+                        >
+                          {r.status === "done" ? r.verdict ?? "done" : r.status}
+                        </span>
+                      }
+                    />
                   ))}
                 </div>
               </section>
@@ -316,6 +328,21 @@ function EvalLab() {
           </>
         )}
       </div>
+
+      {popupSuite && (
+        <SuitePopup
+          suiteId={popupSuite}
+          scenarios={scenarios.data ?? []}
+          onClose={() => setPopupSuite(null)}
+        />
+      )}
+      {transcriptFor && (
+        <TranscriptModal
+          suiteId={transcriptFor.suite}
+          scenarioId={transcriptFor.scenario}
+          onClose={() => setTranscriptFor(null)}
+        />
+      )}
     </main>
   );
 }
