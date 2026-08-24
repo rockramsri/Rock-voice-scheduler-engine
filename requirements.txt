@@ -1,7 +1,10 @@
-livekit-agents[openai,deepgram,cartesia,silero,turn-detector]~=1.6
+livekit-agents[openai,deepgram,cartesia,silero,turn-detector]==1.7.0
 livekit-api~=1.2
 pydantic-ai~=2.21
 python-dotenv~=1.2
 twilio~=9.10
 aiohttp~=3.14
 supabase~=2.31
+# pydantic-ai 2.21 still constructs httpx.AsyncClient and hands it to the SDK.
+# Anthropic 1.0 (2026-08-20) requires httpx2 and raises TypeError at judge time.
+anthropic>=0.120,<1

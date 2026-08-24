@@ -51,9 +51,34 @@ def _render(transcript: CallTranscript) -> str:
     return "\n".join(lines) or "(empty transcript)"
 
 
+def _judge_agent(model: str) -> Agent:
+    """Judge agent that does not pass pydantic-ai's httpx client into the SDK.
+
+    Anthropic 1.0 switched to httpx2. pydantic-ai 2.21 still builds
+    httpx.AsyncClient and the hosted eval server dies on the first judge call
+    with: Expected httpx2.AsyncClient, got httpx.AsyncClient. Letting the
+    Anthropic SDK build its own client works on both 0.x and 1.x.
+    """
+    if model.startswith("anthropic:"):
+        from anthropic import AsyncAnthropic
+        from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.anthropic import AnthropicProvider
+
+        name = model.split(":", 1)[1]
+        return Agent(
+            AnthropicModel(
+                name,
+                provider=AnthropicProvider(anthropic_client=AsyncAnthropic()),
+            ),
+            output_type=list[RubricAnswer],
+            instructions=INSTRUCTIONS,
+        )
+    return Agent(model, output_type=list[RubricAnswer], instructions=INSTRUCTIONS)
+
+
 async def judge_transcript(transcript: CallTranscript, rubric: list[str]) -> JudgeResult:
     model = os.getenv("JUDGE_MODEL", "anthropic:claude-sonnet-4-6")
-    agent = Agent(model, output_type=list[RubricAnswer], instructions=INSTRUCTIONS)
+    agent = _judge_agent(model)
     questions = "\n".join(f"- {q}" for q in rubric)
     result = await agent.run(
         f"TRANSCRIPT ({transcript.channel}, prospect {transcript.prospect_id}):\n"
