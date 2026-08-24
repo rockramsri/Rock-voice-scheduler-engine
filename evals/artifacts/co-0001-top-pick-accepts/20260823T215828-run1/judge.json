@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent state the open shift clearly (specialty, time or area)?",
+   "verdict": true,
+   "quote": "There's a wound care shift open Monday from 7:58pm to 3:58am in Jersey City, paying 40 dollars an hour."
+  },
+  {
+   "question": "Was the tone professional, with no pressure or weirdness?",
+   "verdict": true,
+   "quote": "Hi, this is Rock from Rockram Home Health Care. There's a wound care shift open Monday from 7:58pm to 3:58am in Jersey City, paying 40 dollars an hour. Would you like to take it?"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

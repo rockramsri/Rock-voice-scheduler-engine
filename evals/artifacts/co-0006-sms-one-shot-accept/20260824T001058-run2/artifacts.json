@@ -1,0 +1,34 @@
+{
+ "scenario_id": "co-0006-sms-one-shot-accept",
+ "run_idx": 2,
+ "engine_profile": "cascade",
+ "transcripts": [
+  {
+   "prospect_id": "CG-101",
+   "channel": "sms",
+   "turns": [
+    {
+     "role": "user",
+     "text": "YES",
+     "ts": "2026-08-24T00:10:59.117883Z"
+    },
+    {
+     "role": "agent",
+     "text": "Confirmed, Ana! The Monday 10:10pm to 6:10am shift in Jersey City is yours. Details to follow. Rockram Home Health Care",
+     "ts": "2026-08-24T00:10:59.362523Z"
+    }
+   ],
+   "agent_instructions": null
+  }
+ ],
+ "spans": [],
+ "timings": {
+  "ttfa_ms": 244.5476249558851,
+  "per_turn_ms": [
+   244.5476249558851
+  ],
+  "total_ms": 244.5476249558851,
+  "stage_ms": null
+ },
+ "db_ref": "/Users/rockramsri/Documents/Voice agent- for health care/Rock-voice-scheduler-engine/evals/artifacts/co-0006-sms-one-shot-accept/20260824T001058-run2/snapshot.json"
+}

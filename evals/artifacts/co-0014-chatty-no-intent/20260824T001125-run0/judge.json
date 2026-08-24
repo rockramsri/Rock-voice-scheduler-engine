@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent stay on the shift offer without inventing other topics as facts?",
+   "verdict": true,
+   "quote": "I understand you need time to think about your schedule. If you decide to pass on the shift, just let me know your reason, and I'll update your preferences accordingly. Would you like to take the wound care shift on Monday night?"
+  },
+  {
+   "question": "Did the agent close politely when the nurse had to go?",
+   "verdict": true,
+   "quote": "Got it, I've noted you need time to think about your schedule. Thanks for your time, and I look forward to hearing from you soon. Have a great day!"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

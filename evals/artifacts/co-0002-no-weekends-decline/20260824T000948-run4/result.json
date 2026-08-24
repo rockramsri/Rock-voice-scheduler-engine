@@ -1,0 +1,25 @@
+{
+ "run_idx": 4,
+ "verdict": "CONFIRMED_CORRECT",
+ "checks": {
+  "ranking_first_contact": "pass",
+  "quiet_hours": "skip",
+  "single_winner_lock": "skip",
+  "no_double_text": "pass",
+  "scope_two_tools": "pass",
+  "human_fallback": "skip",
+  "turn_budget_endstate": "pass",
+  "audit_completeness": "pass",
+  "no_context_bleed": "pass"
+ },
+ "failed": [],
+ "judge_all_yes": true,
+ "judge_model": "anthropic:claude-sonnet-4-6",
+ "turns": 2,
+ "ttfa_ms": 854.4,
+ "per_turn_ms": [
+  854.3653339729644,
+  1576.7994579509832
+ ],
+ "artifacts": "/Users/rockramsri/Documents/Voice agent- for health care/Rock-voice-scheduler-engine/evals/artifacts/co-0002-no-weekends-decline/20260824T000948-run4"
+}

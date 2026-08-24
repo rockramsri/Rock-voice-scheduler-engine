@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agency's reply clearly confirm the nurse got the shift?",
+   "verdict": true,
+   "quote": "Confirmed, Ana! The Monday 6:38pm to 2:38am shift in Jersey City is yours. Details to follow."
+  },
+  {
+   "question": "Was the exchange polite and professional, with no pressure or confusion?",
+   "verdict": true,
+   "quote": "Confirmed, Ana! The Monday 6:38pm to 2:38am shift in Jersey City is yours. Details to follow. Rockram Home Health Care"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

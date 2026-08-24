@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent stay on the shift offer without inventing other topics as facts?",
+   "verdict": true,
+   "quote": "I can't provide details about my schedule or the rest of the week, but this shift on Monday night is open right now. Would you like to take it?"
+  },
+  {
+   "question": "Did the agent close politely when the nurse had to go?",
+   "verdict": true,
+   "quote": "Thanks for letting me know. Have a great day, and talk to you next time!"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

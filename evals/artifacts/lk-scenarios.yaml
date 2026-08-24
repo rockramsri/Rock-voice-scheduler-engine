@@ -1,0 +1,17 @@
+name: rock-scheduler-evals
+scenarios:
+- label: co-0001-top-pick-accepts run0
+  instructions: 'You are a home-health nurse on a phone call. Style: cooperative.
+
+    HARD RULES:
+
+    - Listen to the offer, then accept clearly by turn 2.
+
+    - Never ask about other caregivers or patients.'
+  agent_expectations: 'End state: filled filled by CG-101'
+  tags:
+    scenario: co-0001-top-pick-accepts
+    channel: voice
+  userdata:
+    scenario_id: co-0001-top-pick-accepts
+    run_idx: 0

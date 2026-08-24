@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent stay on the shift offer without inventing other topics as facts?",
+   "verdict": true,
+   "quote": "Thanks for asking, but I just have the shift info for now. The shift is a wound care shift Monday 9:29 pm to 5:29 am in Jersey City, paying $40 an hour. Would you like to take it?"
+  },
+  {
+   "question": "Did the agent close politely when the nurse had to go?",
+   "verdict": true,
+   "quote": "No problem, just let me know if you want the wound care shift Monday 9:29 pm to 5:29 am in Jersey City at $40 an hour. The office can help with the weather forecast. Have a great day!"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

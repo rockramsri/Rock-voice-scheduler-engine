@@ -1,0 +1,26 @@
+{
+ "run_idx": 3,
+ "verdict": "CONFIRMED_CORRECT",
+ "checks": {
+  "ranking_first_contact": "pass",
+  "quiet_hours": "skip",
+  "single_winner_lock": "skip",
+  "no_double_text": "pass",
+  "scope_two_tools": "pass",
+  "human_fallback": "skip",
+  "turn_budget_endstate": "pass",
+  "audit_completeness": "pass",
+  "no_context_bleed": "pass"
+ },
+ "failed": [],
+ "judge_all_yes": true,
+ "judge_model": "anthropic:claude-sonnet-4-6",
+ "turns": 3,
+ "ttfa_ms": 911.8,
+ "per_turn_ms": [
+  911.8028749944642,
+  778.5057079745457,
+  1767.4163749907166
+ ],
+ "artifacts": "/Users/rockramsri/Documents/Voice agent- for health care/Rock-voice-scheduler-engine/evals/artifacts/co-0014-chatty-no-intent/20260824T001204-run3"
+}

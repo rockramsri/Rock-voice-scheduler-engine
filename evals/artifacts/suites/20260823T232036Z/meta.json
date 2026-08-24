@@ -1,0 +1,1 @@
+{"kind": "benchmark", "run_id": "b9ee96fd6aba", "k": 1, "overrides": {"judge_model": "openai:gpt-4.1-mini", "label": "judge-swap-demo"}, "scenarios": ["co-0001-top-pick-accepts"]}

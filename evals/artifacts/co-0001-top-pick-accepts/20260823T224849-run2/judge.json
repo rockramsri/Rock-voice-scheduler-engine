@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent state the open shift clearly (specialty, time or area)?",
+   "verdict": true,
+   "quote": "We have a wound care shift available on Monday from 8:48 pm to 4:48 am in Jersey City, paying $40 an hour."
+  },
+  {
+   "question": "Was the tone professional, with no pressure or weirdness?",
+   "verdict": true,
+   "quote": "The shift for wound care on Monday from 8:48 pm to 4:48 am in Jersey City is confirmed for you. The schedule and area details will arrive by text soon, thank you!"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

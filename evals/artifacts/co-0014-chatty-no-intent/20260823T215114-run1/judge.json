@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent stay on the shift offer without inventing other topics as facts?",
+   "verdict": true,
+   "quote": "Would you like to take the wound care shift on Monday night in Jersey City?"
+  },
+  {
+   "question": "Did the agent close politely when the nurse had to go?",
+   "verdict": true,
+   "quote": "Thanks for your time! Have a great day and catch you later."
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

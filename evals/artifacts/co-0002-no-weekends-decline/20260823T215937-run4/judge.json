@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent accept the decline without pressure?",
+   "verdict": true,
+   "quote": "Thank you for letting me know. Have a great day and take care!"
+  },
+  {
+   "question": "Did the agent acknowledge the weekend preference?",
+   "verdict": false,
+   "quote": "Thank you for letting me know. Have a great day and take care!"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

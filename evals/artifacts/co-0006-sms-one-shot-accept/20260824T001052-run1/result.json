@@ -1,0 +1,24 @@
+{
+ "run_idx": 1,
+ "verdict": "CONFIRMED_CORRECT",
+ "checks": {
+  "ranking_first_contact": "pass",
+  "quiet_hours": "skip",
+  "single_winner_lock": "pass",
+  "no_double_text": "pass",
+  "scope_two_tools": "pass",
+  "human_fallback": "skip",
+  "turn_budget_endstate": "pass",
+  "audit_completeness": "pass",
+  "no_context_bleed": "pass"
+ },
+ "failed": [],
+ "judge_all_yes": true,
+ "judge_model": "anthropic:claude-sonnet-4-6",
+ "turns": 1,
+ "ttfa_ms": 269.5,
+ "per_turn_ms": [
+  269.46137502091005
+ ],
+ "artifacts": "/Users/rockramsri/Documents/Voice agent- for health care/Rock-voice-scheduler-engine/evals/artifacts/co-0006-sms-one-shot-accept/20260824T001052-run1"
+}

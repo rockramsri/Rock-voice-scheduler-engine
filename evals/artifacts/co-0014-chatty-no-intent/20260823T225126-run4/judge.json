@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent stay on the shift offer without inventing other topics as facts?",
+   "verdict": true,
+   "quote": "Thanks for asking, but I just wanted to check if you'd like to take the wound care shift Monday night in Jersey City for $40 an hour?"
+  },
+  {
+   "question": "Did the agent close politely when the nurse had to go?",
+   "verdict": true,
+   "quote": "Thanks for letting me know, I'll note that down. Have a great day and take care!"
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

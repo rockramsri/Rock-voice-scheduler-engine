@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent accept the decline without pressure?",
+   "verdict": true,
+   "quote": "Thanks for letting me know that weekends never work for you; I've made a note of it to respect that for future offers. Have a great day, and thanks for your time!"
+  },
+  {
+   "question": "Did the agent acknowledge the weekend preference?",
+   "verdict": true,
+   "quote": "Thanks for letting me know that weekends never work for you; I've made a note of it to respect that for future offers."
+  }
+ ],
+ "model": "anthropic:claude-sonnet-4-6"
+}

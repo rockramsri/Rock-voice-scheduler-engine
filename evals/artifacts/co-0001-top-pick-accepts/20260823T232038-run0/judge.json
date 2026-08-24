@@ -1,0 +1,15 @@
+{
+ "answers": [
+  {
+   "question": "Did the agent state the open shift clearly (specialty, time or area)?",
+   "verdict": true,
+   "quote": "I have an open wound care shift Monday night from 9:20pm to 5:20am in Jersey City paying 40 dollars an hour."
+  },
+  {
+   "question": "Was the tone professional, with no pressure or weirdness?",
+   "verdict": true,
+   "quote": "Hi, this is Rock from Rockram Home Health Care. I have an open wound care shift Monday night from 9:20pm to 5:20am in Jersey City paying 40 dollars an hour. Would you like to take this shift?"
+  }
+ ],
+ "model": "openai:gpt-4.1-mini"
+}

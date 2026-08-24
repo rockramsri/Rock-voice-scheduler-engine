@@ -1,0 +1,324 @@
+{
+ "run_agency_id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+ "agencies": [
+  {
+   "id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+   "name": "Eval Agency 2cb8d541",
+   "timezone": "America/New_York",
+   "quiet_start": 22,
+   "quiet_end": 6,
+   "urgent_lead_hours": 5,
+   "relaxed_lead_hours": 24
+  }
+ ],
+ "nurses": [
+  {
+   "id": "8f41e46a-a26a-4bf4-aa17-dd70d9cd8638",
+   "agency_id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+   "name": "Bruno Silva",
+   "phone": "555-9207",
+   "specialties": [
+    "wound care"
+   ],
+   "areas": [
+    "Jersey City"
+   ],
+   "pay_level": 2,
+   "license_ok": true,
+   "reliability": 0.7,
+   "max_hours_week": 40,
+   "availability": [
+    {
+     "dow": 0,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 1,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 2,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 3,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 4,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 5,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 6,
+     "end": "20:00",
+     "start": "07:00"
+    }
+   ],
+   "active": true,
+   "preferences": {},
+   "avatar_url": ""
+  },
+  {
+   "id": "22243003-9921-4d2b-9a1f-c3fc5106a7c0",
+   "agency_id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+   "name": "Carla Jones",
+   "phone": "555-9330",
+   "specialties": [
+    "wound care"
+   ],
+   "areas": [
+    "Jersey City"
+   ],
+   "pay_level": 2,
+   "license_ok": true,
+   "reliability": 0.7,
+   "max_hours_week": 40,
+   "availability": [
+    {
+     "dow": 0,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 1,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 2,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 3,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 4,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 5,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 6,
+     "end": "20:00",
+     "start": "07:00"
+    }
+   ],
+   "active": true,
+   "preferences": {},
+   "avatar_url": ""
+  },
+  {
+   "id": "b080f9bc-c9c4-4457-b7b5-3a36562915de",
+   "agency_id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+   "name": "Ana Reyes",
+   "phone": "555-9101",
+   "specialties": [
+    "wound care"
+   ],
+   "areas": [
+    "Jersey City"
+   ],
+   "pay_level": 2,
+   "license_ok": true,
+   "reliability": 0.7,
+   "max_hours_week": 40,
+   "availability": [
+    {
+     "dow": 0,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 1,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 2,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 3,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 4,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 5,
+     "end": "20:00",
+     "start": "07:00"
+    },
+    {
+     "dow": 6,
+     "end": "20:00",
+     "start": "07:00"
+    }
+   ],
+   "active": true,
+   "preferences": {
+    "memory": [
+     {
+      "at": "2026-08-23T22:45:29.571269+00:00",
+      "note": "I never work weekend shifts"
+     }
+    ],
+    "avoid_dows": [
+     5,
+     6
+    ]
+   },
+   "avatar_url": ""
+  }
+ ],
+ "patients": [
+  {
+   "id": "817c357c-bf3d-4d3f-bdc4-9c80eff253b9",
+   "agency_id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+   "name": "Eval Patient",
+   "area": "Jersey City",
+   "address": "",
+   "care_needs": [
+    "wound care"
+   ],
+   "language": "en",
+   "phone": ""
+  }
+ ],
+ "shifts": [
+  {
+   "id": "86934658-bed3-416d-952f-4f71a1a6f00f",
+   "agency_id": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+   "patient_id": "817c357c-bf3d-4d3f-bdc4-9c80eff253b9",
+   "nurse_id": null,
+   "specialty": "wound care",
+   "area": "Jersey City",
+   "starts_at": "2026-08-25T00:45:25.507627+00:00",
+   "ends_at": "2026-08-25T08:45:25.507627+00:00",
+   "pay_rate": 40,
+   "status": "offers_out",
+   "callout_nurse_id": "22243003-9921-4d2b-9a1f-c3fc5106a7c0",
+   "callout_reason": null,
+   "callout_at": "2026-08-23T22:45:25.507627+00:00",
+   "rung": 4,
+   "next_action_at": "2026-08-23T22:48:30.775546+00:00",
+   "claimed_by": null,
+   "claimed_at": null
+  }
+ ],
+ "offers": [
+  {
+   "id": "72065982-3fe5-47ea-b796-22d4e0f1a911",
+   "shift_id": "86934658-bed3-416d-952f-4f71a1a6f00f",
+   "nurse_id": "b080f9bc-c9c4-4457-b7b5-3a36562915de",
+   "score": 0.9,
+   "reason": "eval fixture",
+   "state": "declined",
+   "rung": 0,
+   "last_channel": null,
+   "last_touch_at": "2026-08-23T22:45:29.524736+00:00",
+   "responded_at": "2026-08-23T22:45:29.524736+00:00"
+  },
+  {
+   "id": "ffbf0a22-7478-4a3e-be3d-dae89e2dc8fe",
+   "shift_id": "86934658-bed3-416d-952f-4f71a1a6f00f",
+   "nurse_id": "8f41e46a-a26a-4bf4-aa17-dd70d9cd8638",
+   "score": 0.8,
+   "reason": "eval fixture",
+   "state": "no_answer",
+   "rung": 0,
+   "last_channel": null,
+   "last_touch_at": "2026-08-23T22:45:30.753023+00:00",
+   "responded_at": "2026-08-23T22:45:30.753023+00:00"
+  }
+ ],
+ "events": [
+  {
+   "id": 389,
+   "at": "2026-08-23T22:45:25.722843+00:00",
+   "agency_id": null,
+   "actor": "worker",
+   "kind": "offer_call",
+   "shift_id": "86934658-bed3-416d-952f-4f71a1a6f00f",
+   "nurse_id": "b080f9bc-c9c4-4457-b7b5-3a36562915de",
+   "channel": "voice",
+   "rung": 3,
+   "outcome": "dialing",
+   "payload": {}
+  },
+  {
+   "id": 390,
+   "at": "2026-08-23T22:45:29.559139+00:00",
+   "agency_id": null,
+   "actor": "workplane",
+   "kind": "offer_response",
+   "shift_id": "86934658-bed3-416d-952f-4f71a1a6f00f",
+   "nurse_id": "b080f9bc-c9c4-4457-b7b5-3a36562915de",
+   "channel": null,
+   "rung": null,
+   "outcome": "no",
+   "payload": {}
+  },
+  {
+   "id": 391,
+   "at": "2026-08-23T22:45:29.664292+00:00",
+   "agency_id": null,
+   "actor": "workplane",
+   "kind": "memory_learned",
+   "shift_id": null,
+   "nurse_id": "b080f9bc-c9c4-4457-b7b5-3a36562915de",
+   "channel": null,
+   "rung": null,
+   "outcome": null,
+   "payload": {
+    "reason": "I never work weekend shifts",
+    "avoid_dows": [
+     5,
+     6
+    ]
+   }
+  },
+  {
+   "id": 392,
+   "at": "2026-08-23T22:45:30.79653+00:00",
+   "agency_id": null,
+   "actor": "worker",
+   "kind": "offer_call",
+   "shift_id": "86934658-bed3-416d-952f-4f71a1a6f00f",
+   "nurse_id": "8f41e46a-a26a-4bf4-aa17-dd70d9cd8638",
+   "channel": "voice",
+   "rung": 4,
+   "outcome": "skipped_fake_number",
+   "payload": {}
+  }
+ ],
+ "slug_map": {
+  "AGENCY": "4de9ca19-9697-476e-bcbc-4bc5fd231c75",
+  "CG-101": "b080f9bc-c9c4-4457-b7b5-3a36562915de",
+  "CG-207": "8f41e46a-a26a-4bf4-aa17-dd70d9cd8638",
+  "CG-330": "22243003-9921-4d2b-9a1f-c3fc5106a7c0",
+  "PT-1": "817c357c-bf3d-4d3f-bdc4-9c80eff253b9",
+  "SH-1": "86934658-bed3-416d-952f-4f71a1a6f00f"
+ }
+}

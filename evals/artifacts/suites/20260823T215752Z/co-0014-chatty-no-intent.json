@@ -1,0 +1,168 @@
+{
+ "scenario_id": "co-0014-chatty-no-intent",
+ "scenario_version": 1,
+ "suite_run_id": "20260823T215752Z",
+ "engine_profile": "cascade",
+ "channel": "voice",
+ "git_sha": "8bdb265",
+ "ts": "2026-08-23T22:01:31.072592+00:00",
+ "seed": 44,
+ "deterministic": {
+  "oracle_verdict": "REGRESSION",
+  "checks": {
+   "audit_completeness": "pass",
+   "human_fallback": "skip",
+   "no_context_bleed": "pass",
+   "no_double_text": "pass",
+   "quiet_hours": "skip",
+   "ranking_first_contact": "pass",
+   "scope_two_tools": "pass",
+   "single_winner_lock": "skip",
+   "turn_budget_endstate": "fail"
+  },
+  "timings": {
+   "ttfa_p50": 920.7,
+   "full_turn_p95": 1941.8,
+   "stage_ms": null
+  },
+  "turns_used": 3.6
+ },
+ "nondeterministic": {
+  "k": 5,
+  "passes": 4,
+  "pass_k": false,
+  "judge": {
+   "rubric_verdicts": [
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "agreement_with_oracle": 80.0,
+   "stability": "stable",
+   "model": "anthropic:claude-sonnet-4-6"
+  }
+ },
+ "metrics": [
+  {
+   "name": "oracle_verdict",
+   "role": "gate",
+   "value": "REGRESSION",
+   "unit": ""
+  },
+  {
+   "name": "pass_k",
+   "role": "gate",
+   "value": false,
+   "unit": ""
+  },
+  {
+   "name": "k",
+   "role": "track",
+   "value": 5.0,
+   "unit": ""
+  },
+  {
+   "name": "passes",
+   "role": "track",
+   "value": 4.0,
+   "unit": ""
+  },
+  {
+   "name": "ttfa_p50_ms",
+   "role": "track",
+   "value": 920.7,
+   "unit": "ms"
+  },
+  {
+   "name": "full_turn_p95_ms",
+   "role": "track",
+   "value": 1941.8,
+   "unit": "ms"
+  },
+  {
+   "name": "turns_used",
+   "role": "track",
+   "value": 3.6,
+   "unit": ""
+  },
+  {
+   "name": "judge_oracle_agreement",
+   "role": "track",
+   "value": 80.0,
+   "unit": "%"
+  },
+  {
+   "name": "judge_stability",
+   "role": "track",
+   "value": "stable",
+   "unit": ""
+  },
+  {
+   "name": "memory_compiled",
+   "role": "track",
+   "value": null,
+   "unit": ""
+  },
+  {
+   "name": "audit_completeness",
+   "role": "track",
+   "value": "pass",
+   "unit": ""
+  },
+  {
+   "name": "human_fallback",
+   "role": "track",
+   "value": "skip",
+   "unit": ""
+  },
+  {
+   "name": "no_context_bleed",
+   "role": "track",
+   "value": "pass",
+   "unit": ""
+  },
+  {
+   "name": "no_double_text",
+   "role": "track",
+   "value": "pass",
+   "unit": ""
+  },
+  {
+   "name": "quiet_hours",
+   "role": "track",
+   "value": "skip",
+   "unit": ""
+  },
+  {
+   "name": "ranking_first_contact",
+   "role": "track",
+   "value": "pass",
+   "unit": ""
+  },
+  {
+   "name": "scope_two_tools",
+   "role": "gate",
+   "value": "pass",
+   "unit": ""
+  },
+  {
+   "name": "single_winner_lock",
+   "role": "track",
+   "value": "skip",
+   "unit": ""
+  },
+  {
+   "name": "turn_budget_endstate",
+   "role": "track",
+   "value": "fail",
+   "unit": ""
+  }
+ ],
+ "evidence": {
+  "artifacts_path": "/Users/rockramsri/Documents/Voice agent- for health care/Rock-voice-scheduler-engine/evals/artifacts/co-0014-chatty-no-intent/20260823T220117-run4",
+  "failing_run_idx": 4,
+  "seed": 44
+ }
+}
