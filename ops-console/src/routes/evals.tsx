@@ -13,7 +13,7 @@ import { SuitePopup } from "@/components/ops/evals/SuitePopup";
 import { TranscriptModal } from "@/components/ops/evals/TranscriptModal";
 import {
   fetchHealth, fetchLatest, fetchRuns, fetchScenarios, fetchSuite,
-  fetchSuites, promoteBaseline, startRun,
+  fetchSuites, getApiToken, promoteBaseline, setApiToken, startRun,
 } from "@/lib/evals-api";
 
 export const Route = createFileRoute("/evals")({
@@ -40,6 +40,7 @@ function EvalLab() {
   const [transcriptFor, setTranscriptFor] = useState<{ suite: string; scenario: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
+  const [token, setToken] = useState<string>(() => getApiToken());
 
   const health = useQuery({ queryKey: ["evals-health"], queryFn: fetchHealth, refetchInterval: 4000, retry: false });
   const scenarios = useQuery({ queryKey: ["evals-scenarios"], queryFn: fetchScenarios, enabled: !!health.data });
@@ -139,6 +140,17 @@ function EvalLab() {
             />
             {offline ? "server offline" : busy ? "running" : "eval server"}
           </span>
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => {
+              setToken(e.target.value);
+              setApiToken(e.target.value.trim());
+            }}
+            placeholder="api token"
+            title="Only needed on a hosted eval server — unlocks the run buttons"
+            className="clay-input w-24 rounded-full px-3 py-2 text-[11px] font-medium"
+          />
         </div>
       </header>
 

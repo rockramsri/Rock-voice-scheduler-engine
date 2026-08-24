@@ -9,6 +9,28 @@ export const EVALS_API =
   (import.meta.env["VITE_EVALS_API_URL"] as string | undefined) ??
   "http://localhost:8321";
 
+/** Bearer token for POSTs (start runs / promote) on a hosted eval server.
+ * Kept in localStorage so it's entered once per browser, never in the bundle. */
+const TOKEN_KEY = "evals_api_token";
+
+export function getApiToken(): string {
+  if (typeof localStorage === "undefined") return "";
+  return localStorage.getItem(TOKEN_KEY) ?? "";
+}
+
+export function setApiToken(token: string): void {
+  if (typeof localStorage === "undefined") return;
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+function postHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getApiToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
 export interface Metric {
   name: string;
   role: "gate" | "track" | "compare";
@@ -166,7 +188,7 @@ export async function startRun(body: {
 }): Promise<{ run_id: string }> {
   const res = await fetch(`${EVALS_API}/api/runs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: postHeaders(),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -179,7 +201,7 @@ export async function startRun(body: {
 export async function promoteBaseline(suiteId: string): Promise<void> {
   const res = await fetch(`${EVALS_API}/api/baseline/promote`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: postHeaders(),
     body: JSON.stringify({ suite_id: suiteId }),
   });
   if (!res.ok) {

@@ -35,8 +35,16 @@ from evals.scorecard import (Scorecard, assemble, compare, diff, git_sha,  # noq
                              load_baseline, new_suite_id, promote, write_suite)
 from evals.seed import ARTIFACTS_DIR, EVALS_DIR, REPO_ROOT  # noqa: E402
 
-PORT = int(os.getenv("EVALS_SERVER_PORT", "8321"))
+# Railway injects PORT and needs 0.0.0.0; locally we stay loopback-only.
+PORT = int(os.getenv("PORT") or os.getenv("EVALS_SERVER_PORT", "8321"))
+HOST = (os.getenv("EVALS_SERVER_HOST")
+        or ("0.0.0.0" if os.getenv("RAILWAY_ENVIRONMENT") else "127.0.0.1"))
+# When set, POST endpoints (start runs, promote) require
+# `Authorization: Bearer <token>`. Reads stay public — they're just scorecards.
+API_TOKEN = os.getenv("EVALS_API_TOKEN", "")
 PY = str(REPO_ROOT / ".venv" / "bin" / "python")
+if not Path(PY).exists():
+    PY = sys.executable   # hosted: no repo venv, run pytest with this python
 SUITES_DIR = ARTIFACTS_DIR / "suites"
 
 PYTEST_L1 = ["evals/tests/test_l1_ladder.py", "evals/tests/test_l1_scoring.py",
@@ -473,11 +481,16 @@ async def promote_baseline(req: web.Request) -> web.Response:
 async def cors(req: web.Request, handler):
     if req.method == "OPTIONS":
         resp = web.Response()
+    elif (req.method == "POST" and API_TOKEN
+          and req.headers.get("Authorization") != f"Bearer {API_TOKEN}"):
+        resp = web.json_response(
+            {"error": "unauthorized — set the API token in the Eval Lab header"},
+            status=401)
     else:
         resp = await handler(req)
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return resp
 
 
@@ -502,8 +515,11 @@ def build_app() -> web.Application:
 
 
 def main() -> None:
-    print(f"eval server on http://localhost:{PORT}  (eval DB only — never prod)")
-    web.run_app(build_app(), port=PORT, print=None)
+    print(f"eval server on http://{HOST}:{PORT}  (eval DB only — never prod)")
+    if HOST != "127.0.0.1" and not API_TOKEN:
+        print("WARNING: non-loopback bind without EVALS_API_TOKEN — "
+              "anyone who can reach this can start runs and spend LLM credits")
+    web.run_app(build_app(), host=HOST, port=PORT, print=None)
 
 
 if __name__ == "__main__":

@@ -38,9 +38,11 @@ def load_eval_env() -> bool:
     if _env_state is not None:
         return _env_state == "ok"
 
+    # File first (local dev), process env as fallback (hosted: Railway etc.).
     values = dotenv_values(EVALS_DIR / ".env.eval")
-    url = values.get("EVAL_SUPABASE_URL", "")
-    key = values.get("EVAL_SUPABASE_SERVICE_ROLE_KEY", "")
+    url = values.get("EVAL_SUPABASE_URL") or os.environ.get("EVAL_SUPABASE_URL", "")
+    key = (values.get("EVAL_SUPABASE_SERVICE_ROLE_KEY")
+           or os.environ.get("EVAL_SUPABASE_SERVICE_ROLE_KEY", ""))
     if not url or not key:
         _env_state = "missing"
         return False
