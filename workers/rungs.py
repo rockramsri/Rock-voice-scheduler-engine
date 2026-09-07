@@ -98,6 +98,8 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
                       if "voice" in _allowed_channels(o)]
         override = True
     if not candidates:
+        if await _widen_the_net(shift, agency):
+            return
         await escalate(shift, "all prospects exhausted")
         return
     offer = candidates[0]
@@ -147,6 +149,30 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
                        rung=rung.number, outcome=outcome)
     await db.release_shift(shift["id"], status="offers_out", rung=rung.number,
                            next_action_at=(now() + timedelta(minutes=rung.wait_minutes)).isoformat())
+
+
+async def _widen_the_net(shift: dict, agency: dict) -> bool:
+    """Ask the next four eligible nurses before giving up. Cap at 3 rescores."""
+    from workers import dispatch_worker
+
+    if int(shift.get("rescore_rounds") or 0) >= 3:
+        return False
+    already = {o["nurse_id"] for o in await db.offers_for_shift(shift["id"])}
+    prospects, fallbacks = await dispatch_worker._rescore(
+        shift, agency, exclude=already, top_k=4)
+    now_ids = {o["nurse_id"] for o in await db.offers_for_shift(shift["id"])}
+    if not (now_ids - already):
+        return False
+    rounds = await db.increment_rescore_rounds(shift["id"])
+    await db.log_event("worker", "net_widened", shift_id=shift["id"],
+                       payload={"round": rounds,
+                                "added": [p.name for p in prospects],
+                                "fallbacks": [p.name for p in fallbacks]})
+    await db.release_shift(shift["id"], status="offers_out", rung=0,
+                           next_action_at=now().isoformat())
+    log.info("shift %s widened the net (round %d): +%d +%d fallback",
+             shift["id"][:8], rounds, len(prospects), len(fallbacks))
+    return True
 
 
 async def escalate(shift: dict, reason: str) -> None:

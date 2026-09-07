@@ -61,7 +61,8 @@ async def _handle(shift: dict, agency: dict) -> None:
 
 async def _start_offering(shift: dict, agency: dict) -> None:
     """Score prospects, write the scoreboard, hand over to the ladder."""
-    nurses = await db.fetch_active_nurses()
+    nurses = [n for n in await db.fetch_active_nurses()
+              if n.get("agency_id") == shift["agency_id"]]
     busy = await db.overlapping_nurse_ids(shift["starts_at"], shift["ends_at"])
     continuity = await db.continuity_counts(shift["patient_id"])
     week_start, week_end = _week_bounds(shift, agency)
@@ -89,6 +90,33 @@ async def _start_offering(shift: dict, agency: dict) -> None:
                                 "fallbacks": [p.name for p in fallbacks]})
     await db.release_shift(shift["id"], status="offers_out", rung=0,
                            next_action_at=rungs.now().isoformat())
+
+
+async def _rescore(shift: dict, agency: dict, exclude: set[str],
+                   top_k: int = 4) -> tuple[list, list]:
+    """Score the next batch of eligible nurses, skipping anyone already asked."""
+    nurses = [n for n in await db.fetch_active_nurses()
+              if n.get("agency_id") == shift["agency_id"]]
+    busy = await db.overlapping_nurse_ids(shift["starts_at"], shift["ends_at"])
+    continuity = await db.continuity_counts(shift["patient_id"])
+    week_start, week_end = _week_bounds(shift, agency)
+    hours = await db.nurse_week_hours(week_start, week_end)
+    blocked = set(exclude) | busy
+    if shift.get("callout_nurse_id"):
+        blocked.add(shift["callout_nurse_id"])
+    blocked.discard(None)
+    prospects, skipped, fallbacks = scoring.rank(
+        shift, nurses, blocked, agency,
+        top_k=top_k, continuity=continuity, week_hours=hours)
+    rows = [{"shift_id": shift["id"], "nurse_id": p.nurse_id,
+             "score": p.score, "reason": p.reason} for p in prospects]
+    rows += [{"shift_id": shift["id"], "nurse_id": p.nurse_id, "score": p.score,
+              "reason": p.reason, "state": "fallback"} for p in fallbacks]
+    if rows:
+        await db.insert_offers(rows)
+    for note in skipped:
+        log.info("shift %s rescore: %s", shift["id"][:8], note)
+    return prospects, fallbacks
 
 
 def _week_bounds(shift: dict, agency: dict) -> tuple[str, str]:

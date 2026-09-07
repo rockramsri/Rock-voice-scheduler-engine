@@ -351,6 +351,12 @@ async def lock_shift(shift_id: str, nurse_id: str) -> bool:
     return bool(result.data)
 
 
+async def increment_rescore_rounds(shift_id: str) -> int:
+    n = await _run(lambda: client().rpc(
+        "increment_rescore_rounds", {"p_shift": shift_id}).execute())
+    return int(n.data or 0)
+
+
 async def release_shift(shift_id: str, *, status: str, rung: int | None = None,
                         next_action_at: str | None = None) -> None:
     """End a work burst: set the checkpoint, drop the claim, walk away.

@@ -66,6 +66,7 @@ create table shifts (
     next_action_at timestamptz,                 -- the worker polls this
     claimed_by text,
     claimed_at timestamptz,
+    rescore_rounds int not null default 0,      -- widen-the-net; escalate after 3
     -- a nurse can never hold two overlapping shifts, enforced by storage
     constraint no_double_booking exclude using gist
         (nurse_id with =, tstzrange(starts_at, ends_at) with &&)
@@ -107,6 +108,14 @@ returns int language sql as $$
        set dial_attempts = coalesce(dial_attempts, 0) + 1
      where id = p_offer
     returning dial_attempts;
+$$;
+
+create or replace function increment_rescore_rounds(p_shift uuid)
+returns int language sql as $$
+    update shifts
+       set rescore_rounds = coalesce(rescore_rounds, 0) + 1
+     where id = p_shift
+    returning rescore_rounds;
 $$;
 
 -- Inbound webhook idempotency: TextBelt (and Twilio) deliver at-least-once.

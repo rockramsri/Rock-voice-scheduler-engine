@@ -1,0 +1,28 @@
+# V9 — first four decline; the next four are offered before any escalation (B6).
+scenario_id: co-0017-widen-the-net
+schema_version: 1
+scenario_version: 1
+description: Eight eligible nurses; first four decline; next four are offered.
+layer: e2e
+purpose: [regression, eval]
+channel: ladder
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-X}
+roster_fixture:
+  - {slug: CG-1, name: Nurse One, reliability: 0.52}
+  - {slug: CG-2, name: Nurse Two, reliability: 0.54}
+  - {slug: CG-3, name: Nurse Three, reliability: 0.56}
+  - {slug: CG-4, name: Nurse Four, reliability: 0.58}
+  - {slug: CG-5, name: Nurse Five, reliability: 0.60}
+  - {slug: CG-6, name: Nurse Six, reliability: 0.62}
+  - {slug: CG-7, name: Nurse Seven, reliability: 0.64}
+  - {slug: CG-8, name: Nurse Eight, reliability: 0.66}
+  - {slug: CG-X, name: Callout Nurse}
+expected_end_state: {shift: SH-1, status: offers_out, winner: null}
+expected_rank_order: [CG-8, CG-7, CG-6, CG-5]
+invariants: [no_double_text]
+gates: [oracle_verdict]
+k_trials: 1
+seed: 51
+tags: [ladder, b6, v9]
