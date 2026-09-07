@@ -27,6 +27,7 @@ ALLOWED_TOOLS = {
     "offer_agent": {"accept_this_shift", "decline_this_shift", "get_caller_context"},
     "sms_agent": {"get_my_next_shift", "decline_pending_offer", "get_caller_context"},
     "front_desk": {"get_my_next_shift", "list_my_upcoming_shifts", "report_my_callout"},
+    "escalation_agent": {"acknowledge"},
 }
 
 # End-state <-> audit-event pairs for audit_completeness (both directions).
@@ -208,11 +209,20 @@ def human_fallback(snap, scenario, artifacts) -> CheckResult:
     if not escalated:
         return CheckResult(name=name, status="fail", evidence="no escalated audit event")
     shift = _shift(snap, scenario)
-    if shift is None or shift["status"] != "escalated" or shift.get("next_action_at"):
+    if shift is None or shift["status"] != "escalated":
         return CheckResult(name=name, status="fail", evidence=(
-            f"shift status={shift and shift['status']} "
-            f"next_action_at={shift and shift.get('next_action_at')} (want escalated, parked)"))
+            f"shift status={shift and shift['status']} (want escalated)"))
     cutoff = _iso(escalated[0]["at"])
+    paged = _events(snap, "escalation_paged")
+    if not paged:
+        return CheckResult(name=name, status="fail", evidence="no escalation_paged event")
+    if not any(abs((_iso(e["at"]) - cutoff).total_seconds()) <= 60 for e in paged):
+        return CheckResult(name=name, status="fail",
+                           evidence="escalation_paged not within 60s of escalated")
+    phone = (paged[0].get("payload") or {}).get("oncall_phone")
+    if not phone:
+        return CheckResult(name=name, status="fail",
+                           evidence="escalation_paged missing oncall_phone")
     late = [e for e in _events(snap, *OUTREACH_KINDS) if _iso(e["at"]) > cutoff]
     if late:
         return CheckResult(name=name, status="fail",
@@ -223,7 +233,8 @@ def human_fallback(snap, scenario, artifacts) -> CheckResult:
             return CheckResult(name=name, status="fail",
                                evidence=f"{len(late_spans)} tool call(s) after escalation")
     reason = (escalated[0].get("payload") or {}).get("reason", "")
-    return CheckResult(name=name, status="pass", evidence=f"escalated ({reason}), then silence")
+    return CheckResult(name=name, status="pass",
+                       evidence=f"escalated ({reason}), paged {phone}")
 
 
 def turn_budget_endstate(snap, scenario, artifacts) -> CheckResult:

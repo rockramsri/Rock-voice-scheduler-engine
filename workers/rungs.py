@@ -27,7 +27,7 @@ async def message_rung(shift: dict, rung: ladder.Rung, agency: dict) -> None:
     if agency.get("quiet_hours_texts", True) and not ladder.in_call_window(now(), agency):
         lead = (datetime.fromisoformat(shift["starts_at"]) - now()).total_seconds() / 3600
         if lead <= agency["urgent_lead_hours"]:
-            await escalate(shift, "urgent shift inside quiet hours")
+            await escalate(shift, "urgent shift inside quiet hours", agency)
         else:
             window = ladder.next_call_window(now(), agency)
             await db.release_shift(shift["id"], status="offers_out", rung=shift.get("rung") or 0,
@@ -77,7 +77,7 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
     """One prospect per visit: call, wait for an outcome, come back for the next."""
     if not ladder.in_call_window(now(), agency):
         if lead_hours <= agency["urgent_lead_hours"]:
-            await escalate(shift, "urgent shift inside quiet hours")
+            await escalate(shift, "urgent shift inside quiet hours", agency)
         else:
             window = ladder.next_call_window(now(), agency)
             await db.release_shift(shift["id"], status="offers_out", rung=rung.number,
@@ -110,7 +110,7 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
     if not candidates:
         if await _widen_the_net(shift, agency):
             return
-        await escalate(shift, "all prospects exhausted")
+        await escalate(shift, "all prospects exhausted", agency)
         return
     offer = candidates[0]
     claim_from = ["fallback"] if override else ["scored", "messaged"]
@@ -191,12 +191,83 @@ async def _widen_the_net(shift: dict, agency: dict) -> bool:
     return True
 
 
-async def escalate(shift: dict, reason: str) -> None:
-    # TODO(Phase 3+): dial the human coordinator here via channels.outbound.
-    log.warning("shift %s ESCALATED: %s", shift["id"][:8], reason)
+# Always a dialable-looking number in the page, even when the path is mocked.
+MOCK_ONCALL_PHONE = "555-0199"
+
+
+def oncall_phone(agency: dict) -> str:
+    return (agency.get("oncall_phone") or "").strip() or MOCK_ONCALL_PHONE
+
+
+def escalation_sms_body(shift: dict, agency: dict, reason: str) -> str:
+    phone = oncall_phone(agency)
+    code = shift["id"][:6]
+    when = spoken_when(shift["starts_at"], shift["ends_at"],
+                       agency.get("timezone") or "America/New_York")
+    name = agency.get("name") or "the agency"
+    return (f"{name} ESCALATION: {shift.get('specialty', 'shift')} in "
+            f"{shift.get('area', '?')} {when}. Reason: {reason}. "
+            f"Reply ACK {code}. On-call {phone}.")
+
+
+async def escalate(shift: dict, reason: str, agency: dict | None = None) -> None:
+    """Page the on-call human. The SMS body always carries a phone number."""
+    agency = agency or await db.fetch_agency()
+    phone = oncall_phone(agency)
+    text = escalation_sms_body(shift, agency, reason)
+    if _is_fake(phone):
+        outcome = "paged_mock"
+    else:
+        result = await sms.send_sms(phone, text)
+        outcome = "sent" if result.get("ok") else f"failed: {result.get('error', '?')[:80]}"
+    log.warning("shift %s ESCALATED: %s (paged %s)", shift["id"][:8], reason, phone)
     await db.log_event("worker", "escalated", shift_id=shift["id"],
                        payload={"reason": reason})
-    await db.release_shift(shift["id"], status="escalated")
+    await db.log_event("worker", "escalation_paged", shift_id=shift["id"],
+                       channel="sms", outcome=outcome,
+                       payload={"reason": reason, "oncall_phone": phone,
+                                "ack_code": shift["id"][:6], "body": text})
+    ack_min = int(agency.get("escalation_ack_minutes") or 10)
+    await db.mark_escalated(shift["id"], state="paged",
+                            next_action_at=(now() + timedelta(minutes=ack_min)).isoformat(),
+                            pages=0)
+
+
+async def repage_oncall(shift: dict, agency: dict) -> None:
+    """Voice re-page after an unanswered SMS page; two tries, then unreachable."""
+    phone = oncall_phone(agency)
+    if (shift.get("escalation_state") or "") != "paged":
+        await db.mark_escalated(shift["id"],
+                                state=shift.get("escalation_state") or "paged",
+                                next_action_at=shift.get("next_action_at"))
+        return
+    pages = int(shift.get("escalation_pages") or 0)
+    if pages >= 2:
+        await db.mark_escalated(shift["id"], state="unreachable",
+                                next_action_at=None, pages=pages)
+        await db.log_event("worker", "escalation_unreachable", shift_id=shift["id"],
+                           payload={"oncall_phone": phone, "pages": pages})
+        log.warning("shift %s on-call unreachable after %d pages (%s)",
+                    shift["id"][:8], pages, phone)
+        return
+    pages += 1
+    ack_min = int(agency.get("escalation_ack_minutes") or 10)
+    channels = agency.get("oncall_channels") or ["sms", "voice"]
+    outcome = "paged_mock"
+    if "voice" in channels and not _is_fake(phone):
+        meta = {"role": "escalation", "shift_id": shift["id"]}
+        result = await outbound.place_call(
+            phone, room_name=f"esc-{shift['id'][:8]}", metadata=json.dumps(meta))
+        outcome = "dialing" if result.get("ok") else f"failed: {result.get('error', '?')[:80]}"
+    await db.log_event("worker", "escalation_paged", shift_id=shift["id"],
+                       channel="voice", outcome=outcome,
+                       payload={"oncall_phone": phone, "page": pages,
+                                "ack_code": shift["id"][:6]})
+    await db.mark_escalated(shift["id"], state="paged",
+                            next_action_at=(now() + timedelta(minutes=ack_min)).isoformat(),
+                            pages=pages)
+    log.info("shift %s re-paged on-call %s (%s) page %d",
+             shift["id"][:8], phone, outcome, pages)
 
 
 async def _send(channel: str, phone: str, text: str) -> str:

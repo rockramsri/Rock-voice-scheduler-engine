@@ -268,7 +268,9 @@ def test_clean_calls_pass_bleed():
 
 def escalated_snap() -> DbSnapshot:
     snap = golden()
-    snap.shifts[0].update({"nurse_id": None, "status": "escalated", "next_action_at": None})
+    snap.shifts[0].update({"nurse_id": None, "status": "escalated",
+                           "next_action_at": "2026-08-19T14:10:00+00:00",
+                           "escalation_state": "paged"})
     snap.offers = [{"id": "o-101", "shift_id": U["SH-1"], "nurse_id": U["CG-101"],
                     "score": 0.9, "state": "declined", "rung": 1}]
     snap.events = [
@@ -279,7 +281,10 @@ def escalated_snap() -> DbSnapshot:
         ev(6, "offer_sent", nurse="CG-101", channel="sms", rung=1, outcome="sent"),
         ev(7, "offer_response", nurse="CG-101", outcome="no"),
         ev(8, "escalated", payload={"reason": "all prospects exhausted"}),
-        ev(9, "shift_status_changed", payload={"from": "offers_out", "to": "escalated"}),
+        ev(9, "escalation_paged", payload={"oncall_phone": "555-0199",
+                                           "ack_code": "uuid-s",
+                                           "body": "On-call 555-0199. Reply ACK uuid-s."}),
+        ev(10, "shift_status_changed", payload={"from": "offers_out", "to": "escalated"}),
     ]
     return snap
 
@@ -298,6 +303,12 @@ def test_escalation_snapshot_passes():
 def test_missing_escalated_event_fails():
     snap = escalated_snap()
     snap.events = [e for e in snap.events if e["kind"] != "escalated"]
+    assert one(oracle.human_fallback, snap, esc_scenario()).status == "fail"
+
+
+def test_missing_paged_event_fails():
+    snap = escalated_snap()
+    snap.events = [e for e in snap.events if e["kind"] != "escalation_paged"]
     assert one(oracle.human_fallback, snap, esc_scenario()).status == "fail"
 
 

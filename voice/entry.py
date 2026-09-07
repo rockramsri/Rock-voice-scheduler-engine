@@ -23,6 +23,7 @@ from livekit.agents.llm import ChatMessage
 
 from data import db
 from shared import config
+from voice.agents.escalation_agent import build_escalation_agent
 from voice.agents.front_desk import FrontDesk, inbound_greeting
 from voice.agents.offer_agent import build_offer_agent
 from voice.session_factory import build_session
@@ -113,7 +114,20 @@ async def entrypoint(ctx: JobContext) -> None:
     if offer_id:
         _wire_disconnect_no_answer(ctx, offer_id)
 
-    if meta.get("role") == "offer":
+    if meta.get("role") == "escalation":
+        shift = await db.get_shift(meta["shift_id"])
+        if shift is None:
+            log.error("escalation shift %s not found, dropping call", meta.get("shift_id"))
+            return
+        from data.db import agency_display_name
+        agency_name = agency_display_name(shift)
+        reason = (shift.get("callout_reason") or "the roster could not cover it")
+        agent = build_escalation_agent(shift, agency_name=agency_name, reason=reason)
+        greeting = (f"Greet the on-call coordinator as Rock from {agency_name}, "
+                    "say a shift needs a human, and ask them to acknowledge.")
+        log.info("starting EscalationAgent for shift %s on %r",
+                 meta["shift_id"][:8], config.ENGINE_PROFILE)
+    elif meta.get("role") == "offer":
         offer = await db.get_offer_full(meta["offer_id"])
         if offer is None:
             log.error("offer %s not found, dropping call", meta.get("offer_id"))

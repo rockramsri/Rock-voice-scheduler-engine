@@ -1,0 +1,20 @@
+# S6 — exhaustion pages the on-call number (even on the mock path) and ACK lands.
+scenario_id: co-0019-escalation-paged-and-acked
+schema_version: 1
+scenario_version: 1
+description: Exhausted roster pages on-call 555-0199; ACK acks the shift.
+layer: e2e
+purpose: [regression, eval]
+channel: ladder
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "555-9101"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+expected_end_state: {shift: SH-1, status: escalated, winner: null}
+invariants: [human_fallback]
+gates: [oracle_verdict, human_fallback]
+k_trials: 1
+seed: 55
+tags: [ladder, s6, escalation]

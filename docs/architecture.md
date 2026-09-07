@@ -186,7 +186,10 @@ stateDiagram-v2
     offers_out --> filled : lock_shift — first YES wins
     offers_out --> escalated : prospects exhausted, or urgent inside quiet hours
     filled --> [*]
-    escalated --> [*]
+    escalated --> acked : ACK or voice acknowledge
+    escalated --> unreachable : two unanswered voice re-pages
+    acked --> [*]
+    unreachable --> [*]
 ```
 
 `cancelled` and `completed` also exist as reserved statuses in the schema; no code path writes them today. The status-change trigger writes an event row and fires `pg_notify` on every transition, which is what makes the console's live feed free.
@@ -222,4 +225,4 @@ Inbound calls arrive with the SIP caller number. `entry.py` looks it up in the r
 
 ## Event vocabulary
 
-Everything observable lands in `events`, append-only: `callout_recorded`, `shift_status_changed` (from the trigger), `prospects_scored`, `offer_sent`, `offer_call`, `offer_response` (outcomes `yes`, `yes_too_late`, `no`), `stand_down`, `escalated`, `sms_in`, `sms_out`. Fat payloads like transcripts belong in object storage; events carry URLs and small JSON only. The console's event log is just this table, filtered three ways: this story, live, all.
+Everything observable lands in `events`, append-only: `callout_recorded`, `shift_status_changed` (from the trigger), `prospects_scored`, `offer_sent`, `offer_call`, `offer_response` (outcomes `yes`, `yes_too_late`, `no`), `stand_down`, `escalated`, `escalation_paged` (payload always includes `oncall_phone`), `escalation_acked`, `escalation_unreachable`, `sms_in`, `sms_out`. Fat payloads like transcripts belong in object storage; events carry URLs and small JSON only. The console's event log is just this table, filtered three ways: this story, live, all.

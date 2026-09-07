@@ -57,6 +57,8 @@ async def _handle(shift: dict, agency: dict) -> None:
         await _start_offering(shift, agency)
     elif shift["status"] == "offers_out":
         await _advance(shift, agency)
+    elif shift["status"] == "escalated":
+        await rungs.repage_oncall(shift, agency)
 
 
 async def _start_offering(shift: dict, agency: dict) -> None:
@@ -73,7 +75,7 @@ async def _start_offering(shift: dict, agency: dict) -> None:
     for note in skipped:
         log.info("shift %s: %s", shift["id"][:8], note)
     if not prospects and not fallbacks:
-        await rungs.escalate(shift, "no eligible prospects")
+        await rungs.escalate(shift, "no eligible prospects", agency)
         return
     rows = [{"shift_id": shift["id"], "nurse_id": p.nurse_id,
              "score": p.score, "reason": p.reason} for p in prospects]
@@ -138,7 +140,7 @@ async def _advance(shift: dict, agency: dict) -> None:
     elif plan[-1].channels == ("voice",):
         rung = plan[-1]  # voice rung repeats: one prospect per visit
     else:
-        await rungs.escalate(shift, "ladder exhausted")
+        await rungs.escalate(shift, "ladder exhausted", agency)
         return
     if "voice" in rung.channels:
         await rungs.voice_rung(shift, rung, agency, lead)

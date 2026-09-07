@@ -82,7 +82,7 @@ That is the whole story: callout, scoring, ladder, YES, lock, stand-downs, audit
 - **Quiet hours are real.** Voice calls fire only between 06:00 and 22:00 agency-local (default `America/New_York`). At night, a relaxed shift just waits for 06:00 — and an urgent one escalates to a human instead of calling. If you must demo at night, widen `quiet_start`/`quiet_end` on the `agencies` row first (via psql), or expect the escalated ending.
 - **Shared-phone YES/NO routing.** With one phone backing several prospects, a bare YES or NO applies to the most recently touched pending offer. In practice the flow above is unambiguous; if you want per-nurse precision, give the nurses different real numbers.
 - **Twilio SMS stays blocked** in the US until A2P 10DLC registration clears (error 30034) — which is exactly why the demo ships on TextBelt. WhatsApp works instantly once you join the sandbox (`join <code>` texted to +1 415 523 8886) and point the sandbox inbound URL at `PUBLIC_BASE_URL/sms`.
-- **The escalation ending is a feature.** Decline everything, or let calls ring out (a live call goes stale after 3 minutes, then the next prospect is dialed): when prospects are exhausted the shift lands `escalated`, with the reason in the event log. Today escalation is an audited event; the coordinator dial-out is on the roadmap.
+- **The escalation ending is a feature.** Decline everything, or let calls ring out (a live call goes stale after 3 minutes, then the next prospect is dialed): when prospects are exhausted the shift lands `escalated` and pages the on-call number (SMS with an `ACK` code, then voice). The mock path still writes `555-0199` on the page so the audit is never a log line with no phone.
 
 ## Reset between runs
 

@@ -14,7 +14,10 @@ create table agencies (
     quiet_end smallint not null default 6,      -- no calls before 6am
     quiet_hours_texts boolean not null default true,  -- texts follow the same window
     urgent_lead_hours int not null default 5,
-    relaxed_lead_hours int not null default 24
+    relaxed_lead_hours int not null default 24,
+    oncall_phone text,                              -- coordinator to page on escalate
+    oncall_channels text[] not null default array['sms','voice'],
+    escalation_ack_minutes int not null default 10
 );
 
 -- "WHO could work?" One row per caregiver. Phone is deliberately NOT unique:
@@ -68,6 +71,8 @@ create table shifts (
     claimed_by text,
     claimed_at timestamptz,
     rescore_rounds int not null default 0,      -- widen-the-net; escalate after 3
+    escalation_state text,                      -- paged | acked | unreachable
+    escalation_pages int not null default 0,    -- voice re-pages; 2 then unreachable
     -- a nurse can never hold two overlapping shifts, enforced by storage
     constraint no_double_booking exclude using gist
         (nurse_id with =, tstzrange(starts_at, ends_at) with &&)
@@ -161,13 +166,45 @@ returns setof shifts language sql as $$
        set claimed_by = p_worker, claimed_at = now()
      where s.id in (
         select id from shifts
-         where status in ('callout', 'offers_out')
-           and (next_action_at is null or next_action_at <= now())
+         where (
+               (status in ('callout', 'offers_out')
+                and (next_action_at is null or next_action_at <= now()))
+            or (status = 'escalated'
+                and escalation_state = 'paged'
+                and (next_action_at is null or next_action_at <= now()))
+         )
            and (claimed_at is null or claimed_at < now() - interval '3 minutes')
          order by starts_at
          limit p_limit
            for update skip locked)
     returning s.*;
+$$;
+
+-- On-call SMS "ACK abcdef" and the console Acknowledge button share this guard.
+create or replace function ack_escalation(p_code text)
+returns uuid language sql as $$
+    update shifts
+       set escalation_state = 'acked',
+           next_action_at = null,
+           claimed_by = null,
+           claimed_at = null
+     where status = 'escalated'
+       and escalation_state = 'paged'
+       and left(id::text, 6) = lower(p_code)
+    returning id;
+$$;
+
+create or replace function ack_escalation_console(p_shift uuid)
+returns boolean language sql security definer as $$
+    update shifts
+       set escalation_state = 'acked',
+           next_action_at = null,
+           claimed_by = null,
+           claimed_at = null
+     where id = p_shift
+       and status = 'escalated'
+       and escalation_state = 'paged'
+    returning true;
 $$;
 
 -- Caregiver memory: one-row UPDATE so concurrent voice+SMS declines cannot

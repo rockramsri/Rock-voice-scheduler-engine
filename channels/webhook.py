@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import time
 
 from aiohttp import web
@@ -144,8 +145,43 @@ async def handle_textbelt_reply(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+_ACK_RE = re.compile(r"\bACK\s+([0-9a-f]{6})\b", re.I)
+
+
+def _digits(phone: str) -> str:
+    return "".join(c for c in (phone or "") if c.isdigit())
+
+
+def _same_oncall(sender: str, oncall: str) -> bool:
+    a, b = _digits(sender), _digits(oncall)
+    if not a or not b:
+        return False
+    return a == b or a[-7:] == b[-7:] or (len(a) >= 10 and len(b) >= 10 and a[-10:] == b[-10:])
+
+
+async def _escalation_ack(sender: str, body: str) -> str | None:
+    """ACK <shift[:6]> from the on-call number, before YES/NO parsing."""
+    match = _ACK_RE.search(body or "")
+    if not match:
+        return None
+    agency = await db.fetch_agency()
+    from workers.rungs import oncall_phone
+    if not _same_oncall(sender, oncall_phone(agency)):
+        return None
+    shift_id = await db.ack_escalation(match.group(1))
+    if shift_id:
+        await db.log_event("webhook", "escalation_acked", shift_id=shift_id,
+                           payload={"ack_code": match.group(1).lower(),
+                                    "oncall_phone": oncall_phone(agency)})
+        return "Acknowledged. Thank you — we have you on it."
+    return "That code did not match a waiting escalation."
+
+
 async def _route_inbound(sender: str, body: str) -> str:
-    """YES/NO first; rate-limit the LLM path; never raise out of the webhook."""
+    """ACK first, then YES/NO; rate-limit the LLM path; never raise out of the webhook."""
+    ack = await _escalation_ack(sender, body)
+    if ack is not None:
+        return ack
     reply = await _offer_reply(sender, body)
     if reply is not None:
         return reply

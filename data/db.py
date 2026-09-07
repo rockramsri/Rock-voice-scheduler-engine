@@ -371,6 +371,32 @@ async def increment_rescore_rounds(shift_id: str) -> int:
     return int(n.data or 0)
 
 
+async def mark_escalated(shift_id: str, *, state: str,
+                         next_action_at: str | None = None,
+                         pages: int | None = None) -> bool:
+    """callout/offers_out/escalated → escalated with a paging checkpoint."""
+    fields: dict[str, Any] = {
+        "status": "escalated", "escalation_state": state,
+        "next_action_at": next_action_at, "claimed_by": None, "claimed_at": None,
+    }
+    if pages is not None:
+        fields["escalation_pages"] = pages
+    result = await _run(lambda: client().table("shifts").update(fields)
+                        .eq("id", shift_id)
+                        .in_("status", ["callout", "offers_out", "escalated"]).execute())
+    return bool(result.data)
+
+
+async def ack_escalation(code: str) -> str | None:
+    """Guarded paged → acked by ACK code (first 6 chars of the shift id)."""
+    result = await _run(lambda: client().rpc(
+        "ack_escalation", {"p_code": (code or "").strip().lower()[:6]}).execute())
+    data = result.data
+    if isinstance(data, list):
+        return data[0] if data else None
+    return data or None
+
+
 async def release_shift(shift_id: str, *, status: str, rung: int | None = None,
                         next_action_at: str | None = None) -> None:
     """End a work burst: set the checkpoint, drop the claim, walk away.
