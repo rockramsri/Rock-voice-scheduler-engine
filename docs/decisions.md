@@ -13,7 +13,7 @@ The whole system coordinates through one Postgres database, and Supabase was cho
 
 ## Why so few tables
 
-Six domain tables plus one console table, on purpose. Each one is a distinct answer to a distinct question, and nothing else exists:
+Six domain tables plus one console table, plus `webhook_receipts` for inbound idempotency. Each one is a distinct answer to a distinct question, and nothing else exists:
 
 - **`shifts` is the single contested row.** One row is simultaneously the calendar fact (who works when, for whom), the callout record (`callout_nurse_id`, `callout_reason`, `callout_at`), the scheduler checkpoint (`status`, `rung`, `next_action_at`, `claimed_by`), and the lock target (`nurse_id` NULL means open seat). Every race in the system — worker pickup, first YES, double-booking — is a race over this one row, so Postgres row locking resolves all of them.
 - **`offers` is the per-prospect scoreboard.** Current state only; history lives in events. `UNIQUE(shift_id, nurse_id)` means rescoring after a crash upserts into the same rows — retries can never create a second offer and therefore can never double-text a nurse.
@@ -64,7 +64,7 @@ Each nurse also carries `preferences.channels` (editable in the console); the la
 
 ## Channel design
 
-- **TextBelt is the primary US SMS sender.** US carriers block application SMS from unregistered local numbers (A2P 10DLC — a carrier rule, not Twilio's; Twilio returns error 30034). Brand registration is quick with an EIN, but campaign review takes around two weeks. TextBelt delivers immediately with a paid key, so `send_sms` routes through it exclusively, and replies ride TextBelt's `replyWebhookUrl` back to the webhook (HMAC-validated). The Twilio `/sms` route stays wired for the day A2P clears.
+- **TextBelt is the primary US SMS sender.** US carriers block application SMS from unregistered local numbers (A2P 10DLC — a carrier rule, not Twilio's; Twilio returns error 30034). Brand registration is quick with an EIN, but campaign review takes around two weeks. TextBelt delivers immediately with a paid key, so `send_sms` routes through it exclusively, and replies ride TextBelt's `replyWebhookUrl` back to the webhook (HMAC-validated). The Twilio `/sms` route stays wired for the day A2P clears. Signature checks **fail closed**: an empty `PUBLIC_BASE_URL` rejects unsigned POSTs unless `WEBHOOK_INSECURE_DEV` is explicitly on. `webhook_receipts` de-dupes TextBelt `textId` (and Twilio MessageSid) so at-least-once delivery cannot double-log or double-call the LLM.
 - **WhatsApp rides Twilio's sandbox** — instant two-way messaging once the recipient joins, same webhook, no code changes.
 - **Voice is LiveKit SIP.** Inbound: Twilio trunk, LiveKit dispatch rule, named agent. Outbound: agent-first ordering — dispatch the agent into the room, then dial, so the callee never answers into silence.
 - **Every sender returns an ok/error dict and never raises.** Messaging must not take down a live call. Fake 555 numbers are filtered by one shared guard before any provider is touched.

@@ -1,5 +1,5 @@
 -- ROCK Scheduler schema. Apply once: psql $DB_URL -f data/schema.sql
--- Five domain tables + agencies. The safety rules live in the DATABASE:
+-- Five domain tables + agencies + webhook_receipts. The safety rules live in the DATABASE:
 -- an exclusion constraint makes double-booking impossible, claim_shifts()
 -- makes worker pickup race-free, lock_shift() makes "first YES wins" atomic.
 
@@ -88,6 +88,15 @@ create table offers (
     unique (shift_id, nurse_id)                 -- retries can never double-text
 );
 
+-- Inbound webhook idempotency: TextBelt (and Twilio) deliver at-least-once.
+-- First insert of (provider, external_id) wins; a replay is a unique conflict.
+create table webhook_receipts (
+    provider text not null,          -- textbelt | twilio
+    external_id text not null,       -- TextBelt textId / Twilio MessageSid
+    seen_at timestamptz not null default now(),
+    primary key (provider, external_id)
+);
+
 -- Append-only audit. Fat payloads (transcripts, recordings) go to object
 -- storage; events carry URLs only.
 create table events (
@@ -168,3 +177,4 @@ alter table patients enable row level security;
 alter table shifts enable row level security;
 alter table offers enable row level security;
 alter table events enable row level security;
+alter table webhook_receipts enable row level security;

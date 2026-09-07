@@ -99,6 +99,9 @@ TWILIO_SIP_PASSWORD: str = os.getenv("TWILIO_SIP_PASSWORD", "")
 # Inbound-SMS webhook server; PUBLIC_BASE_URL is the ngrok https URL.
 SMS_WEBHOOK_PORT: int = int(os.getenv("SMS_WEBHOOK_PORT", "8787"))
 PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+# Unsigned webhooks are rejected unless this is explicitly True (local curl).
+# Default False: a forgotten PUBLIC_BASE_URL must not fail open.
+WEBHOOK_INSECURE_DEV: bool = _env_bool("WEBHOOK_INSECURE_DEV", False)
 # WhatsApp sender. Default is Twilio's shared sandbox number: recipients
 # must first join the sandbox with the code shown in the Twilio console.
 TWILIO_WHATSAPP_FROM: str = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")

@@ -43,7 +43,7 @@ The system is organized around one rule: **tools are the only crossing between t
 | `telephony.py` | LiveKit SIP plumbing. `status` prints trunks, dispatch rules, and config mismatches; `provision` creates the inbound trunk, dispatch rule, and outbound trunk for a fresh number and refuses to touch numbers claimed by other trunks. |
 | `outbound.py` | Places calls: dispatch the agent into the room first, then dial via the SIP outbound trunk, so the callee never answers into an empty room. Metadata on the dispatch decides which agent gets built. |
 | `sms.py` | Senders with one shape — every function returns an ok/error dict and never raises, because messaging must not take down a live call. `send_sms` routes exclusively through TextBelt (Twilio US SMS is A2P-blocked); WhatsApp rides Twilio's Messages API. Outbound TextBelt sends carry a `replyWebhookUrl` when `PUBLIC_BASE_URL` is set. |
-| `webhook.py` | The inbound message server on `:8787`. Routes: `/textbelt-reply` (HMAC-validated), `/sms` (Twilio-signature-validated), `/health`. A strict YES/NO parser handles pending offers first; everything else goes to the work plane's SMS agent with a 12-second budget and a safe fallback reply. |
+| `webhook.py` | The inbound message server on `:8787`. Routes: `/textbelt-reply` (HMAC-validated), `/sms` (Twilio-signature-validated), `/health`. Signatures fail closed when `PUBLIC_BASE_URL` is empty unless `WEBHOOK_INSECURE_DEV` is set. TextBelt `textId` (and Twilio MessageSid) are recorded in `webhook_receipts` so at-least-once delivery cannot double-apply. A per-phone cap (20 texts / 10 min) sits in front of the LLM path. A strict YES/NO parser handles pending offers first; everything else goes to the work plane's SMS agent with a 12-second budget and a safe fallback reply. |
 | `cli.py` | Terminal remote control: `status`, `call`, `sms`, `whatsapp`, `textbelt`, `serve`, `link-sms`, `provision`. |
 
 ### data/ — the source of truth
@@ -84,6 +84,11 @@ erDiagram
     AGENCIES ||--o{ PATIENTS : "serves"
     AGENCIES ||--o{ SHIFTS : "schedules"
     AGENCIES ||--o{ WORKFLOWS : "registers"
+    WEBHOOK_RECEIPTS {
+        text provider PK
+        text external_id PK
+        timestamptz seen_at
+    }
     PATIENTS ||--o{ SHIFTS : "receives care in"
     NURSES |o--o{ SHIFTS : "assigned to"
     NURSES ||--o{ OFFERS : "prospect in"

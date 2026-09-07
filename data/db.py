@@ -9,7 +9,7 @@ and rungs are bumped BEFORE sending anything (no duplicate outreach).
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from supabase import Client, create_client
@@ -146,6 +146,34 @@ async def recent_sms_events(phone: str, limit: int = 8) -> list[dict]:
                         .eq("payload->>phone", clean)
                         .order("at", desc=True).limit(limit).execute())
     return result.data
+
+
+async def record_webhook_receipt(provider: str, external_id: str) -> bool:
+    """First-seen insert. False if this (provider, external_id) already landed."""
+    if not external_id:
+        return True  # nothing to de-dupe; caller still processes the body
+    try:
+        result = await _run(lambda: client().table("webhook_receipts")
+                            .insert({"provider": provider,
+                                     "external_id": external_id}).execute())
+        return bool(result.data)
+    except Exception as exc:  # unique violation → replay; other errors stay loud
+        message = str(exc).lower()
+        if "duplicate" in message or "unique" in message or "23505" in message:
+            return False
+        raise
+
+
+async def inbound_sms_count(phone: str, *, minutes: int = 10) -> int:
+    """How many sms_in events this phone produced in the last `minutes`."""
+    clean = phone.removeprefix("whatsapp:")
+    cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
+    result = await _run(lambda: client().table("events")
+                        .select("id")
+                        .eq("kind", "sms_in")
+                        .eq("payload->>phone", clean)
+                        .gte("at", cutoff.isoformat()).execute())
+    return len(result.data or [])
 
 
 async def overlapping_nurse_ids(starts_at: str, ends_at: str) -> set[str]:
