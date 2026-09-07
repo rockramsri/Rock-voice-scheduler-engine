@@ -88,6 +88,39 @@ def test_availability_window_beats_no_window():
     assert ids(prospects) == ["free", "busy"]
 
 
+def _overnight_shift() -> dict:
+    # Wednesday 22:00 → Thursday 06:00 New York.
+    start = datetime(2026, 8, 19, 22, 0, tzinfo=NY)
+    return {"specialty": "wound care", "area": "Jersey City",
+            "starts_at": start.isoformat(),
+            "ends_at": (start + timedelta(hours=8)).isoformat()}
+
+
+def test_overnight_window_fits():
+    night = [nurse("night", availability=[{"dow": 2, "start": "22:00", "end": "06:00"}])]
+    prospects, _, _ = scoring.rank(_overnight_shift(), night, set(), AGENCY)
+    assert prospects[0].score > 0
+    fit = scoring._availability_fit(_overnight_shift(), night[0]["availability"],
+                                    AGENCY["timezone"])
+    assert fit == 1.0
+
+
+def test_overnight_without_window_is_weak():
+    day = [nurse("day", availability=[{"dow": 2, "start": "08:00", "end": "16:00"}])]
+    fit = scoring._availability_fit(_overnight_shift(), day[0]["availability"],
+                                    AGENCY["timezone"])
+    assert fit == 0.3
+
+
+def test_overnight_window_covers_thursday_morning_remainder():
+    # Window booked as Wednesday 22:00–06:00 also covers Thursday 00:00–06:00.
+    start = datetime(2026, 8, 20, 0, 0, tzinfo=NY)  # Thursday
+    shift = {"starts_at": start.isoformat(),
+             "ends_at": (start + timedelta(hours=6)).isoformat()}
+    windows = [{"dow": 2, "start": "22:00", "end": "06:00"}]
+    assert scoring._availability_fit(shift, windows, AGENCY["timezone"]) == 1.0
+
+
 def test_cheaper_pay_level_wins_ties():
     nurses = [nurse("pricey", pay_level=3), nurse("cheap", pay_level=1)]
     prospects, _, _ = rank(nurses)

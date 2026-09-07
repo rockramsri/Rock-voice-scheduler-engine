@@ -92,13 +92,45 @@ def rank(shift: dict, nurses: list[dict], exclude_ids: set[str], agency: dict,
     return prospects[:top_k], notes, fallbacks[:2]
 
 
+WEEK_MINUTES = 7 * 1440
+
+
+def _hm_minutes(value: str) -> int:
+    hour, minute = value.split(":")[:2]
+    return int(hour) * 60 + int(minute)
+
+
+def _week_minutes(when: datetime) -> int:
+    return when.weekday() * 1440 + when.hour * 60 + when.minute
+
+
+def _window_span(window: dict) -> tuple[int, int]:
+    """Minutes-since-week-start for a window; midnight-spanning end wraps +1 day."""
+    dow = int(window["dow"])
+    start = dow * 1440 + _hm_minutes(window["start"])
+    end = dow * 1440 + _hm_minutes(window["end"])
+    if end <= start:
+        end += 1440
+    return start, end
+
+
+def _covers(win_start: int, win_end: int, shift_start: int, shift_end: int) -> bool:
+    for wrap in (-WEEK_MINUTES, 0, WEEK_MINUTES):
+        if win_start + wrap <= shift_start and win_end + wrap >= shift_end:
+            return True
+    return False
+
+
 def _availability_fit(shift: dict, availability: list[dict], tz: str) -> float:
     """1.0 if a weekly window covers the shift, else 0.3 (maybe reachable)."""
     starts = datetime.fromisoformat(shift["starts_at"]).astimezone(ZoneInfo(tz))
     ends = datetime.fromisoformat(shift["ends_at"]).astimezone(ZoneInfo(tz))
+    shift_start = _week_minutes(starts)
+    shift_end = _week_minutes(ends)
+    if shift_end <= shift_start:
+        shift_end += WEEK_MINUTES
     for window in availability:
-        if (window["dow"] == starts.weekday()
-                and window["start"] <= starts.strftime("%H:%M")
-                and window["end"] >= ends.strftime("%H:%M")):
+        win_start, win_end = _window_span(window)
+        if _covers(win_start, win_end, shift_start, shift_end):
             return 1.0
     return 0.3

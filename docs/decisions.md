@@ -75,7 +75,7 @@ Each nurse also carries `preferences.channels` (editable in the console); the la
 
 Two scorers on purpose:
 
-- **The worker's scorer (`workers/scoring.py`) is deterministic.** Hard filters that never bend: right specialty, license ok, active, not already booked in the window, not the nurse who called out. Then a weighted soft score — specialty 0.30, area 0.25 (same area 1.0, else 0.4), availability 0.20 (a weekly window covering the shift 1.0, else 0.3), reliability 0.15, cost 0.10 (cheaper pay level preferred). Fast, free, explainable — the `reason` string is spoken to prospects verbatim.
+- **The worker's scorer (`workers/scoring.py`) is deterministic.** Hard filters that never bend: right specialty, license ok, active, not already booked in the window, not the nurse who called out. Then a weighted soft score — specialty 0.30, area 0.25 (same area 1.0, else 0.4), availability 0.20 (a weekly window covering the shift 1.0, else 0.3; midnight-spanning windows are two segments so 22:00–06:00 night shifts fit), reliability 0.15, cost 0.10 (cheaper pay level preferred). Fast, free, explainable — the `reason` string is spoken to prospects verbatim.
 - **The conversational `find_nurse` tool keeps a Pydantic AI ranker**, because a spoken answer benefits from language-model judgment about "near Jersey City". Both read the same table.
 
 Weights are module constants until real outcome data earns them a home in the `agencies` table.
