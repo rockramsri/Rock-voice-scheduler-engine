@@ -131,7 +131,7 @@ function Index() {
               Rock Scheduler
             </h1>
             <p className="truncate text-[11.5px] text-muted-foreground">
-              voice shift ops · Rockram Home Health Care
+              voice shift ops
             </p>
           </div>
         </div>

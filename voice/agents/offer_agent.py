@@ -22,7 +22,7 @@ from shared.untrusted import sanitize_note
 from workplane.offers import accept_offer, decline_offer
 
 INSTRUCTIONS = """\
-You are Rock, calling {first_name} from Rockram Home Health Care about ONE
+You are Rock, calling {first_name} from {agency_name} about ONE
 open shift: {details}. Introduce yourself as Rock.
 
 Rules, always:
@@ -49,7 +49,8 @@ and end the call; never push.
 """
 
 
-def build_offer_agent(offer: dict, override: bool = False) -> Agent:
+def build_offer_agent(offer: dict, override: bool = False,
+                      agency_name: str | None = None) -> Agent:
     shift, nurse = offer["shifts"], offer["nurses"]
     first_name = nurse["name"].split()[0]
     when = spoken_when(shift["starts_at"], shift["ends_at"])
@@ -59,7 +60,10 @@ def build_offer_agent(offer: dict, override: bool = False) -> Agent:
     memory = (nurse.get("preferences") or {}).get("memory") or []
     note = sanitize_note(memory[-1]["note"] if memory else "")
 
-    instructions = INSTRUCTIONS.format(first_name=first_name, details=details)
+    from data.db import agency_display_name
+    name = agency_name or agency_display_name(shift)
+    instructions = INSTRUCTIONS.format(first_name=first_name, details=details,
+                                       agency_name=name)
     if override:
         instructions += OVERRIDE_BLOCK.format(first_name=first_name)
 

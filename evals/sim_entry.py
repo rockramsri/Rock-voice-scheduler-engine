@@ -115,12 +115,14 @@ async def entrypoint(ctx: JobContext) -> None:
         "prospect": (scenario.expected_rank_order[0]
                      if scenario.expected_rank_order else "CG-101"),
     }
+    from data.db import agency_display_name
     first = offer["nurses"]["name"].split()[0]
+    agency_name = agency_display_name(offer.get("shifts"))
     session = AgentSession(llm=build_text_llm())
     await session.start(agent=agent, room=ctx.room, record=False)
     await session.generate_reply(
         instructions=(f"Greet {first} by name, say you are Rock calling from "
-                      "Rockram Home Health Care about an open shift, and present it."))
+                      f"{agency_name} about an open shift, and present it."))
 
 
 if __name__ == "__main__":

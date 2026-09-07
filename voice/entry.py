@@ -109,20 +109,26 @@ async def entrypoint(ctx: JobContext) -> None:
         if offer is None:
             log.error("offer %s not found, dropping call", meta.get("offer_id"))
             return
-        agent = build_offer_agent(offer, override=bool(meta.get("override")))
+        from data.db import agency_display_name
+        agency_name = agency_display_name(offer.get("shifts"))
+        agent = build_offer_agent(offer, override=bool(meta.get("override")),
+                                  agency_name=agency_name)
         first_name = offer["nurses"]["name"].split()[0]
         greeting = (f"Greet {first_name} by name, say you are Rock calling from "
-                    "Rockram Home Health Care about an open shift, and present it.")
+                    f"{agency_name} about an open shift, and present it.")
         if meta.get("override"):
-            greeting = (f"Greet {first_name} by name as Rock from Rockram Home "
-                        "Health Care, acknowledge their known preference with an "
+            greeting = (f"Greet {first_name} by name as Rock from {agency_name}, "
+                        "acknowledge their known preference with an "
                         "apology, then gently present the shift as a last resort.")
         log.info("starting OfferAgent for offer %s on %r",
                  meta["offer_id"][:8], config.ENGINE_PROFILE)
     else:
         phone, matches = await _resolve_sip_caller(ctx)
-        agent = FrontDesk(caller_phone=phone, matches=matches)
-        greeting = inbound_greeting(matches)
+        agency = await db.fetch_agency()
+        agency_name = agency.get("name") or "the agency"
+        agent = FrontDesk(caller_phone=phone, matches=matches,
+                          agency_name=agency_name)
+        greeting = inbound_greeting(matches, agency_name=agency_name)
         log.info("starting FrontDesk on engine profile %r (phone=%s, n=%d)",
                  config.ENGINE_PROFILE, phone, len(matches))
 

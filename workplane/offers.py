@@ -54,7 +54,8 @@ async def stand_down_losers(shift_id: str) -> None:
         shift = await db.get_shift(shift_id)
         losers = await db.offers_for_shift(shift_id, states=STAND_DOWN_FROM)
         when = spoken_when(shift["starts_at"], shift["ends_at"])
-        text = (f"Rockram Home Health Care: the {when} {shift['specialty']} shift in "
+        agency = db.agency_display_name(shift)
+        text = (f"{agency}: the {when} {shift['specialty']} shift in "
                 f"{shift['area']} has been covered. Thanks for being available — "
                 "we'll reach out next time.")
         for offer in losers:

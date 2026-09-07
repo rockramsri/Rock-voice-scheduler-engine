@@ -52,7 +52,7 @@ The system is organized around one rule: **tools are the only crossing between t
 | --- | --- |
 | `schema.sql` | The five domain tables plus `agencies`, the two SQL functions (`claim_shifts`, `lock_shift`), the status-change audit trigger, and RLS. Heavily commented — read it. |
 | `dashboard.sql` | Console additions: the `workflows` table, nurse channel preferences and avatars, anon read policies, the realtime publication, and two anon-callable RPCs — `ff_shifts` (skip ladder waits) and `sync_demo_shifts` (keep demo shifts coherent with profile edits). |
-| `db.py` | The only module that talks to Postgres. Enforces the two discipline rules: transitions are always guarded, rungs bump before sends. supabase-py is sync, so every call runs in a thread. |
+| `db.py` | The only module that talks to Postgres. Enforces the two discipline rules: transitions are always guarded, rungs bump before sends. supabase-py is sync, so every call runs in a thread. `agency_display_name` reads the nested `agencies(name)` join so copy never hardcodes a brand. |
 | `seed.py` | Idempotent demo world: the agency, 10 nurses on fake 555 numbers, 2 patients, 2 demo shifts (one relaxed, one urgent). `--me +1XXXXXXXXXX` puts your real phone on James Okafor. |
 
 ### shared/ — small and boring on purpose

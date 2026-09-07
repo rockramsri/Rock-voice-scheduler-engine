@@ -103,8 +103,21 @@ async def next_shift_for(nurse_id: str) -> dict | None:
     return result.data[0] if result.data else None
 
 
+def agency_display_name(row: dict | None, default: str = "the agency") -> str:
+    """Agency name from an agency row or a nested `agencies` join."""
+    if not row:
+        return default
+    nested = row.get("agencies")
+    if isinstance(nested, dict) and nested.get("name"):
+        return str(nested["name"])
+    if row.get("name") and ("timezone" in row or "quiet_start" in row):
+        return str(row["name"])
+    return default
+
+
 async def get_shift(shift_id: str) -> dict | None:
-    result = await _run(lambda: client().table("shifts").select("*")
+    result = await _run(lambda: client().table("shifts")
+                        .select("*, agencies(name)")
                         .eq("id", shift_id).limit(1).execute())
     return result.data[0] if result.data else None
 
@@ -112,7 +125,7 @@ async def get_shift(shift_id: str) -> dict | None:
 async def get_offer_full(offer_id: str) -> dict | None:
     """Offer + its shift + its nurse — everything an OfferAgent may know."""
     result = await _run(lambda: client().table("offers")
-                        .select("*, shifts(*, patients(name, area)), nurses(*)")
+                        .select("*, shifts(*, patients(name, area), agencies(name)), nurses(*)")
                         .eq("id", offer_id).limit(1).execute())
     return result.data[0] if result.data else None
 
@@ -131,7 +144,7 @@ async def pending_offer_for_phone(phone: str) -> dict | None:
     """Newest awaiting-reply offer for this phone (SMS/WhatsApp YES-NO routing)."""
     clean = phone.removeprefix("whatsapp:")
     result = await _run(lambda: client().table("offers")
-                        .select("*, nurses!inner(name, phone), shifts(*)")
+                        .select("*, nurses!inner(name, phone), shifts(*, agencies(name))")
                         .eq("nurses.phone", clean).eq("state", "messaged")
                         .order("last_touch_at", desc=True).limit(1).execute())
     return result.data[0] if result.data else None

@@ -94,7 +94,9 @@ async def _reply_like_the_webhook(phone: str, body: str,
     if reply is None:
         allowed = await db.find_nurses_by_phone(phone)
         context = await sms_agent._context_for(phone, allowed)
-        agent = sms_agent._build_sms_agent(allowed, phone)
+        agency = await db.fetch_agency()
+        agent = sms_agent._build_sms_agent(
+            allowed, phone, agency_name=agency.get("name") or "the agency")
         untrusted = sms_agent._untrusted_notes(allowed)
         user = f"{context}\n\nNew SMS from {phone}: {body}"
         if untrusted:

@@ -37,7 +37,7 @@ RATE_LIMIT_REPLY = (
 
 FALLBACK_REPLY = (
     "Sorry, our assistant is having trouble right now. "
-    "Please call the Rockram Home Health Care office."
+    "Please call the office."
 )
 
 
@@ -167,15 +167,16 @@ async def _offer_reply(sender: str, body: str) -> str | None:
     if offer is None:
         return None
     first = offer["nurses"]["name"].split()[0]
+    agency = db.agency_display_name(offer.get("shifts"))
     if answer in {"no", "n"}:
         await decline_offer(offer)
-        return f"No problem, {first} — thanks for letting us know. Rockram Home Health Care"
+        return f"No problem, {first} — thanks for letting us know. {agency}"
     when = spoken_when(offer["shifts"]["starts_at"], offer["shifts"]["ends_at"])
     if await accept_offer(offer):
         return (f"Confirmed, {first}! The {when} shift in {offer['shifts']['area']} "
-                "is yours. Details to follow. Rockram Home Health Care")
+                f"is yours. Details to follow. {agency}")
     return (f"So sorry, {first} — that shift was just filled. "
-            "We'll reach out next time. Rockram Home Health Care")
+            f"We'll reach out next time. {agency}")
 
 
 async def handle_health(_: web.Request) -> web.Response:

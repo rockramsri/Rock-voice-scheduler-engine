@@ -13,8 +13,8 @@ from livekit.agents import Agent
 from workplane.tools.scheduling_tools import build_scheduling_tools
 
 BASE_INSTRUCTIONS = """\
-You are Rock, the warm, efficient front desk assistant for Rockram Home
-Health Care, a home health care agency. Introduce yourself as Rock. Callers
+You are Rock, the warm, efficient front desk assistant for {agency_name},
+a home health care agency. Introduce yourself as Rock. Callers
 are nurses, caregivers, family members, and coordinators.
 
 Spoken style, always:
@@ -66,25 +66,27 @@ def _identity_block(caller_phone: str | None, matches: list[dict]) -> str:
     )
 
 
-def inbound_greeting(matches: list[dict]) -> str:
+def inbound_greeting(matches: list[dict], agency_name: str = "the agency") -> str:
     """First-turn instructions for generate_reply after session.start."""
     if len(matches) == 1:
         first = matches[0]["name"].split()[0]
-        return (f"Greet {first} by name as Rock from the Rockram Home Health "
-                "Care front desk and ask how you can help.")
+        return (f"Greet {first} by name as Rock from the {agency_name} "
+                "front desk and ask how you can help.")
     if len(matches) > 1:
         names = " or ".join(n["name"] for n in matches)
-        return ("Greet the caller warmly as Rock from the Rockram Home Health "
-                "Care front desk. You recognize this phone on the roster under "
+        return (f"Greet the caller warmly as Rock from the {agency_name} "
+                "front desk. You recognize this phone on the roster under "
                 f"several names — ask which one they are calling as: {names}.")
-    return ("Greet the caller warmly as Rock from the Rockram Home Health "
-            "Care front desk, ask for their name, then ask how you can help.")
+    return (f"Greet the caller warmly as Rock from the {agency_name} "
+            "front desk, ask for their name, then ask how you can help.")
 
 
 class FrontDesk(Agent):
     def __init__(self, *, caller_phone: str | None = None,
-                 matches: list[dict] | None = None) -> None:
+                 matches: list[dict] | None = None,
+                 agency_name: str = "the agency") -> None:
         matches = matches or []
-        instructions = BASE_INSTRUCTIONS + "\n" + _identity_block(caller_phone, matches)
+        instructions = (BASE_INSTRUCTIONS.format(agency_name=agency_name)
+                        + "\n" + _identity_block(caller_phone, matches))
         super().__init__(instructions=instructions,
                          tools=build_scheduling_tools(matches))

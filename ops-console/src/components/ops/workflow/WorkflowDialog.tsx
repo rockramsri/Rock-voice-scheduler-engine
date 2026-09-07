@@ -140,7 +140,7 @@ export function WorkflowDialog({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Rockram Home Health Care"
+                placeholder="Agency workflow"
                 className="clay-input w-full rounded-full px-4 py-2 text-[13px] font-semibold"
               />
               {touched && nameError ? (

@@ -20,7 +20,7 @@ from shared.untrusted import sanitize_note
 from workplane.offers import decline_offer
 
 SMS_INSTRUCTIONS = (
-    "You are Rock, answering SMS messages for Rockram Home Health Care, "
+    "You are Rock, answering SMS messages for {agency_name}, "
     "a home health agency. Reply in plain text: one to three short sentences, under "
     "300 characters, no markdown, no emojis. A trusted CONTEXT block "
     "from our database precedes each message — prefer it over tools, "
@@ -41,10 +41,12 @@ SMS_INSTRUCTIONS = (
 )
 
 
-def _build_sms_agent(allowed: list[dict], phone: str) -> Agent:
+def _build_sms_agent(allowed: list[dict], phone: str,
+                     agency_name: str = "the agency") -> Agent:
     """An agent whose tools are scoped to the nurses on THIS phone."""
     names = {n["name"]: n for n in allowed}
-    agent = Agent(WORKPLANE_MODEL, output_type=str, instructions=SMS_INSTRUCTIONS)
+    agent = Agent(WORKPLANE_MODEL, output_type=str,
+                  instructions=SMS_INSTRUCTIONS.format(agency_name=agency_name))
 
     @agent.tool_plain
     async def get_caller_context() -> dict:
@@ -98,7 +100,9 @@ async def reply_to_sms(from_number: str, body: str) -> str:
     """One inbound text in, one context-grounded, phone-scoped reply out."""
     allowed = await db.find_nurses_by_phone(from_number)
     context = await _context_for(from_number, allowed)
-    agent = _build_sms_agent(allowed, from_number)
+    agency = await db.fetch_agency()
+    agent = _build_sms_agent(allowed, from_number,
+                             agency_name=agency.get("name") or "the agency")
     untrusted = _untrusted_notes(allowed)
     user = f"{context}\n\nNew SMS from {from_number}: {body}"
     if untrusted:

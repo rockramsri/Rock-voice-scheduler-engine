@@ -182,7 +182,7 @@ async def run_once(scenario, run_idx: int) -> dict:
         transcript.agent_instructions = agent.instructions
         persona = _persona(scenario)
         history = None
-        inbound = ("Rock from Rockram Home Health Care is calling you about "
+        inbound = (f"Rock from {agency['name']} is calling you about "
                    "an open shift. Answer the phone.")
 
         async with build_text_llm() as llm, AgentSession(llm=llm) as session:
