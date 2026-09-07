@@ -240,20 +240,16 @@ async def learn_nurse_preference(nurse_id: str, note: str,
                                  avoid_dows: list[int] | None = None) -> None:
     """Persist a learned preference on the nurse row (caregiver memory).
 
-    Appends to a capped `memory` list and unions `avoid_dows` (Python weekday
-    numbers, Mon=0..Sun=6) inside the preferences jsonb; scoring skips those
-    days at rank time. Audited as a memory_learned event.
+    The SQL function appends to a capped `memory` list and unions `avoid_dows`
+    (Python weekday numbers, Mon=0..Sun=6) in one UPDATE so concurrent
+    writers cannot lose a note. Audited as a memory_learned event.
     """
-    rows = (await _run(lambda: client().table("nurses").select("preferences")
-                       .eq("id", nurse_id).limit(1).execute())).data
-    prefs = (rows[0].get("preferences") if rows else None) or {}
-    memory = prefs.get("memory", [])
-    memory.append({"note": note, "at": datetime.now(UTC).isoformat()})
-    prefs["memory"] = memory[-20:]
-    if avoid_dows:
-        prefs["avoid_dows"] = sorted({*prefs.get("avoid_dows", []), *avoid_dows})
-    await _run(lambda: client().table("nurses").update({"preferences": prefs})
-               .eq("id", nurse_id).execute())
+    from shared.untrusted import sanitize_note
+    note = sanitize_note(note)
+    params = {"p_nurse": nurse_id, "p_note": note}
+    if avoid_dows is not None:
+        params["p_avoid_dows"] = avoid_dows
+    await _run(lambda: client().rpc("learn_nurse_preference", params).execute())
     await log_event("workplane", "memory_learned", nurse_id=nurse_id,
                     payload={"reason": note, "avoid_dows": avoid_dows or []})
 
@@ -265,18 +261,10 @@ async def record_override_outcome(nurse_id: str, accepted: bool) -> None:
     declined asks promote avoid_dows into hard_avoid_dows, and scoring then
     never offers those days again, not even as a fallback.
     """
-    rows = (await _run(lambda: client().table("nurses").select("preferences")
-                       .eq("id", nurse_id).limit(1).execute())).data
-    prefs = (rows[0].get("preferences") if rows else None) or {}
-    if accepted:
-        prefs["override_declines"] = 0
-    else:
-        prefs["override_declines"] = prefs.get("override_declines", 0) + 1
-        if prefs["override_declines"] >= 2 and prefs.get("avoid_dows"):
-            prefs["hard_avoid_dows"] = sorted({*prefs.get("hard_avoid_dows", []),
-                                               *prefs["avoid_dows"]})
-    await _run(lambda: client().table("nurses").update({"preferences": prefs})
-               .eq("id", nurse_id).execute())
+    result = await _run(lambda: client().rpc(
+        "record_override_outcome",
+        {"p_nurse": nurse_id, "p_accepted": accepted}).execute())
+    prefs = result.data if isinstance(result.data, dict) else {}
     await log_event("workplane", "override_outcome", nurse_id=nurse_id,
                     outcome="accepted" if accepted else "declined",
                     payload={"declines": prefs.get("override_declines", 0),

@@ -37,6 +37,8 @@ Why not pgmq or a broker? One sequential-ish flow per callout does not need one.
 
 ## The discipline rules
 
+Caregiver memory (`learn_nurse_preference`, `record_override_outcome`) is a SQL function that `FOR UPDATE`s the nurse row and writes `preferences` with `jsonb_set` in one statement, so a voice decline and an SMS decline cannot lose a note.
+
 Two rules are enforced in `data/db.py`, the only module that talks to Postgres:
 
 1. **Every state transition is a guarded UPDATE carrying the expected previous state.** `record_callout` requires `status='scheduled'`. `set_offer_state` requires the offer to be in a caller-supplied `from_states` list. `release_shift` refuses to overwrite a shift that got filled mid-burst. When two writers race, one matches zero rows and loses cleanly — no lost updates, no corrupted states, no exceptions.

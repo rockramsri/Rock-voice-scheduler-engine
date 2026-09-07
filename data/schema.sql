@@ -140,6 +140,99 @@ returns setof shifts language sql as $$
     returning s.*;
 $$;
 
+-- Caregiver memory: one-row UPDATE so concurrent voice+SMS declines cannot
+-- lose a write. Memory list is capped at the last 20 notes.
+create or replace function learn_nurse_preference(
+    p_nurse uuid, p_note text, p_avoid_dows int[] default null)
+returns void language plpgsql as $$
+begin
+    perform 1 from nurses where id = p_nurse for update;
+    update nurses n
+       set preferences = (
+            with prefs as (
+                select coalesce(n.preferences, '{}'::jsonb) as p
+            ),
+            grown as (
+                select coalesce(p->'memory', '[]'::jsonb)
+                       || jsonb_build_array(jsonb_build_object(
+                            'note', p_note,
+                            'at', to_char(timezone('utc', now()),
+                                          'YYYY-MM-DD"T"HH24:MI:SS"Z"'))) as arr
+                  from prefs
+            ),
+            capped as (
+                select coalesce((
+                    select jsonb_agg(elem order by ord)
+                      from (
+                        select elem, ord
+                          from jsonb_array_elements((select arr from grown))
+                               with ordinality as t(elem, ord)
+                         offset greatest(jsonb_array_length((select arr from grown)) - 20, 0)
+                      ) keep
+                ), '[]'::jsonb) as arr
+            ),
+            dows as (
+                select case
+                    when p_avoid_dows is null then
+                        coalesce((select p->'avoid_dows' from prefs), '[]'::jsonb)
+                    else (
+                        select coalesce(jsonb_agg(to_jsonb(v) order by v), '[]'::jsonb)
+                          from (
+                            select distinct v from (
+                                select jsonb_array_elements_text(
+                                    coalesce((select p->'avoid_dows' from prefs),
+                                             '[]'::jsonb))::int as v
+                                union
+                                select unnest(p_avoid_dows)
+                            ) u
+                          ) d
+                    )
+                end as arr
+            )
+            select jsonb_set(
+                     jsonb_set((select p from prefs), '{memory}', (select arr from capped)),
+                     '{avoid_dows}', (select arr from dows))
+       )
+     where id = p_nurse;
+end;
+$$;
+
+create or replace function record_override_outcome(p_nurse uuid, p_accepted boolean)
+returns jsonb language plpgsql as $$
+declare
+    prefs jsonb;
+    declines int;
+begin
+    select coalesce(preferences, '{}'::jsonb) into prefs
+      from nurses where id = p_nurse for update;
+    if not found then
+        return '{}'::jsonb;
+    end if;
+    if p_accepted then
+        prefs := jsonb_set(prefs, '{override_declines}', '0');
+    else
+        declines := coalesce((prefs->>'override_declines')::int, 0) + 1;
+        prefs := jsonb_set(prefs, '{override_declines}', to_jsonb(declines));
+        if declines >= 2 and prefs ? 'avoid_dows' then
+            prefs := jsonb_set(prefs, '{hard_avoid_dows}', (
+                select coalesce(jsonb_agg(to_jsonb(v) order by v), '[]'::jsonb)
+                  from (
+                    select distinct v from (
+                        select jsonb_array_elements_text(
+                            coalesce(prefs->'hard_avoid_dows', '[]'::jsonb))::int as v
+                        union
+                        select jsonb_array_elements_text(
+                            coalesce(prefs->'avoid_dows', '[]'::jsonb))::int
+                    ) u
+                  ) d
+            ));
+        end if;
+    end if;
+    update nurses set preferences = prefs where id = p_nurse;
+    return prefs;
+end;
+$$;
+
 -- First YES wins. Guarded status + the exclusion constraint both protect us;
 -- an overlap with the nurse's other shifts comes back as false, not an error.
 create or replace function lock_shift(p_shift uuid, p_nurse uuid)
