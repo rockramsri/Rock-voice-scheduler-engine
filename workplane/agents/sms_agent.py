@@ -18,6 +18,7 @@ from shared.config import WORKPLANE_MODEL
 from shared.spoken import spoken_when
 from shared.untrusted import sanitize_note
 from workplane.offers import decline_offer
+from workplane.sms_intent import maybe_accept_from_classifier
 
 SMS_INSTRUCTIONS = (
     "You are Rock, answering SMS messages for {agency_name}, "
@@ -99,6 +100,11 @@ def _build_sms_agent(allowed: list[dict], phone: str,
 async def reply_to_sms(from_number: str, body: str) -> str:
     """One inbound text in, one context-grounded, phone-scoped reply out."""
     allowed = await db.find_nurses_by_phone(from_number)
+    if await maybe_accept_from_classifier(body):
+        offer = await db.pending_offer_for_phone(from_number)
+        if offer is not None:
+            from channels.webhook import apply_offer_intent
+            return await apply_offer_intent(offer, "accept")
     context = await _context_for(from_number, allowed)
     agency = await db.fetch_agency()
     agent = _build_sms_agent(allowed, from_number,

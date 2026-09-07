@@ -24,6 +24,7 @@ from shared import config
 from shared.spoken import spoken_when
 from workplane.agents.sms_agent import reply_to_sms
 from workplane.offers import accept_offer, decline_offer
+from workplane.sms_intent import classify_offer_reply
 
 log = logging.getLogger("channels.webhook")
 
@@ -158,25 +159,41 @@ async def _route_inbound(sender: str, body: str) -> str:
         return FALLBACK_REPLY
 
 
+def _confirm_accept(offer: dict, won: bool) -> str:
+    first = offer["nurses"]["name"].split()[0]
+    agency = db.agency_display_name(offer.get("shifts"))
+    if not won:
+        return (f"So sorry, {first} — that shift was just filled. "
+                f"We'll reach out next time. {agency}")
+    when = spoken_when(offer["shifts"]["starts_at"], offer["shifts"]["ends_at"])
+    return (f"Confirmed, {first}! The {when} shift in {offer['shifts']['area']} "
+            f"is yours. Details to follow. {agency}")
+
+
+def _confirm_decline(offer: dict) -> str:
+    first = offer["nurses"]["name"].split()[0]
+    agency = db.agency_display_name(offer.get("shifts"))
+    return f"No problem, {first} — thanks for letting us know. {agency}"
+
+
+async def apply_offer_intent(offer: dict, intent: str) -> str:
+    """Lock or decline from a classified intent (webhook + SMS classifier)."""
+    if intent == "decline":
+        await decline_offer(offer)
+        return _confirm_decline(offer)
+    won = await accept_offer(offer)
+    return _confirm_accept(offer, won)
+
+
 async def _offer_reply(sender: str, body: str) -> str | None:
-    """Strict YES/NO handling for pending shift offers; None = not an offer reply."""
-    answer = body.strip().lower().rstrip(".!")
-    if answer not in {"yes", "y", "no", "n"}:
+    """Deterministic accept/decline for a pending offer; None = not a clear reply."""
+    intent = classify_offer_reply(body)
+    if intent is None:
         return None
     offer = await db.pending_offer_for_phone(sender)
     if offer is None:
         return None
-    first = offer["nurses"]["name"].split()[0]
-    agency = db.agency_display_name(offer.get("shifts"))
-    if answer in {"no", "n"}:
-        await decline_offer(offer)
-        return f"No problem, {first} — thanks for letting us know. {agency}"
-    when = spoken_when(offer["shifts"]["starts_at"], offer["shifts"]["ends_at"])
-    if await accept_offer(offer):
-        return (f"Confirmed, {first}! The {when} shift in {offer['shifts']['area']} "
-                f"is yours. Details to follow. {agency}")
-    return (f"So sorry, {first} — that shift was just filled. "
-            f"We'll reach out next time. {agency}")
+    return await apply_offer_intent(offer, intent)
 
 
 async def handle_health(_: web.Request) -> web.Response:
