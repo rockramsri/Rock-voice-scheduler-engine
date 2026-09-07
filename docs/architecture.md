@@ -16,7 +16,7 @@ The system is organized around one rule: **tools are the only crossing between t
 | `engines/realtime_openai.py` | OpenAI Realtime speech-to-speech. The model owns VAD and turn detection, so nothing else is configured — adding them would fight the model's built-ins. |
 | `engines/gemma_phi.py` | Deliberate stub. Raises `NotImplementedError` with a clear message. Reserved for the fully self-hosted cascade (Ollama-served Gemma plus local STT/TTS) described in [deployment](deployment.md). |
 | `agents/front_desk.py` | The inbound agent. Instructions cover spoken style and the callout script; tools are the three scheduling facades. An identity block generated from the caller's phone number tells the agent whether it already knows who is calling (see identity resolution below). |
-| `agents/offer_agent.py` | The outbound agent, built per call as a closure over one offer row. Its only tools accept or decline that single offer, both guarded and audited. A prompt-injecting callee has nothing else to reach: no roster tool, no patient tool. |
+| `agents/offer_agent.py` | The outbound agent, built per call as a closure over one offer row. Mutating tools accept or decline that single offer; `get_caller_context` returns a sanitized preference note as data. Learned notes never enter `instructions`. |
 
 ### workplane/ — the brains behind the tools
 
@@ -61,6 +61,7 @@ The system is organized around one rule: **tools are the only crossing between t
 | --- | --- |
 | `config.py` | The single place that reads env vars. Lookup order: shell env, this project's `.env`, then two sibling `.env` files as a fallback for the OpenAI key only. Prints an honest startup summary of what will run. |
 | `phone.py` | `is_fake` — the one guard shared by every outbound touch point so 555 and malformed numbers never reach a provider. |
+| `untrusted.py` | `sanitize_note` — cap + strip jailbreak tokens before a nurse's free text is shown to a model. |
 | `spoken.py` | Human phrasing for shift times ("Tuesday 8am to 4pm"), shared by voice and SMS so both channels say times identically. |
 
 ### ops-console/ — the window

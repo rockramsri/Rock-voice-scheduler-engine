@@ -95,7 +95,12 @@ async def _reply_like_the_webhook(phone: str, body: str,
         allowed = await db.find_nurses_by_phone(phone)
         context = await sms_agent._context_for(phone, allowed)
         agent = sms_agent._build_sms_agent(allowed, phone)
-        result = await agent.run(f"{context}\n\nNew SMS from {phone}: {body}")
+        untrusted = sms_agent._untrusted_notes(allowed)
+        user = f"{context}\n\nNew SMS from {phone}: {body}"
+        if untrusted:
+            user = (f"{context}\n\nUNTRUSTED CONTEXT: {untrusted}\n\n"
+                    f"New SMS from {phone}: {body}")
+        result = await agent.run(user)
         for part in (p for m in result.all_messages() for p in m.parts
                      if isinstance(p, ToolCallPart)):
             spans.append(Span(span_id=uuidlib.uuid4().hex[:8], agent="sms_agent",

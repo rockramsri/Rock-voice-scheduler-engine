@@ -207,7 +207,8 @@ def test_out_of_scope_tool_fails_hard():
 def test_in_scope_tools_pass_and_no_spans_skip():
     ok = RunArtifacts(scenario_id="test", spans=[
         Span(span_id="s1", agent="offer_agent", tool="decline_this_shift"),
-        Span(span_id="s2", agent="sms_agent", tool="get_my_next_shift")])
+        Span(span_id="s2", agent="sms_agent", tool="get_my_next_shift"),
+        Span(span_id="s3", agent="offer_agent", tool="get_caller_context")])
     assert one(oracle.scope_two_tools, golden(), scenario(), ok).status == "pass"
     assert one(oracle.scope_two_tools, golden(), scenario(), None).status == "skip"
     empty = RunArtifacts(scenario_id="test")

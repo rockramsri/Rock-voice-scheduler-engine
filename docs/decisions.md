@@ -80,7 +80,7 @@ Weights are module constants until real outcome data earns them a home in the `a
 
 ## Agent security design
 
-The OfferAgent is **scope-locked by construction**: built per call as a closure over one offer row, its only tools accept or decline that single offer. The callee is untrusted audio — a prompt injection can at most accept or decline the very offer the callee was already asked about, and both actions are guarded and audited. There is no roster tool, no patient tool, nothing else to reach. The SMS agent applies the same posture to text: untrusted message bodies travel only in the user turn, never in instructions, and the trusted context block comes from the database.
+The OfferAgent is **scope-locked by construction**: built per call as a closure over one offer row, its only mutating tools accept or decline that single offer. The callee is untrusted audio — a prompt injection can at most accept or decline the very offer the callee was already asked about, and both actions are guarded and audited. There is no roster tool, no patient tool, nothing else to reach. Learned preference notes never enter `Agent.instructions`; they are returned by a read-only `get_caller_context` tool (and, on SMS, tagged `UNTRUSTED CONTEXT:` on the user turn) after `sanitize_note` strips newlines and the tokens `system` / `instruction` / `ignore`. The SMS agent applies the same posture to text: untrusted message bodies travel only in the user turn, never in instructions, and the trusted context block comes from the database.
 
 ## Engine-agnostic by construction
 
