@@ -148,6 +148,16 @@ def test_two_yes_events_fail():
     assert one(oracle.single_winner_lock, snap, scenario()).status == "fail"
 
 
+def test_winner_stand_down_fails():
+    snap = golden()
+    snap.events.append(ev(12, "stand_down", nurse="CG-101", outcome="sent"))
+    assert one(oracle.winner_not_stood_down, snap, scenario()).status == "fail"
+
+
+def test_winner_not_stood_down_passes_golden():
+    assert one(oracle.winner_not_stood_down, golden(), scenario()).status == "pass"
+
+
 def test_unresolved_loser_offer_fails():
     snap = golden()
     snap.offers[1]["state"] = "messaged"   # loser never stood down

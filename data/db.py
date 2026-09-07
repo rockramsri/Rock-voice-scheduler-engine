@@ -315,6 +315,19 @@ async def bump_offer_rung(offer_id: str, rung: int, channel: str) -> bool:
     return bool(result.data)
 
 
+async def touch_offer(offer_id: str) -> bool:
+    """Heartbeat last_touch_at so a live call never looks stale."""
+    result = await _run(lambda: client().table("offers").update({
+        "last_touch_at": "now()",
+    }).eq("id", offer_id).eq("state", "calling").execute())
+    return bool(result.data)
+
+
+async def set_offer_call_room(offer_id: str, room: str) -> None:
+    await _run(lambda: client().table("offers").update({"call_room": room})
+               .eq("id", offer_id).execute())
+
+
 async def set_offer_state(offer_id: str, to_state: str, from_states: list[str]) -> bool:
     # Stamp last_touch_at on every transition so a scored->calling jump (a
     # voice-only prospect never messaged) leaves a non-null timestamp for the

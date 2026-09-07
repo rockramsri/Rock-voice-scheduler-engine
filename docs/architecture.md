@@ -150,6 +150,7 @@ erDiagram
         text last_channel
         timestamptz last_touch_at
         timestamptz responded_at
+        text call_room "live offer call"
     }
     EVENTS {
         bigint id PK
@@ -202,7 +203,8 @@ stateDiagram-v2
     messaged --> declined : NO by text, or a too-late YES
     calling --> accepted : YES on the call
     calling --> declined : NO on the call, or a too-late YES
-    calling --> no_answer : call stale after 3 minutes
+    calling --> no_answer : call stale after 3 minutes, or callee hangs up
+    no_answer --> accepted : YES after a long call (B2)
     scored --> stood_down : shift filled by someone else
     messaged --> stood_down : shift filled by someone else
     calling --> stood_down : shift filled by someone else

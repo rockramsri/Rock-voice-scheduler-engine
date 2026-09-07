@@ -6,6 +6,7 @@ the seam where Phase 2 passive listeners (emergency watcher, speculative
 executor) attach to the live transcript stream.
 """
 
+import asyncio
 import json
 import logging
 
@@ -36,7 +37,7 @@ log = logging.getLogger("rock.entry")
 server = AgentServer()
 
 
-def wire_logging(session: AgentSession) -> None:
+def wire_logging(session: AgentSession, offer_id: str | None = None) -> None:
     """Log committed items and per-turn latency; verbose transcripts are gated.
 
     Raw per-utterance transcripts are PHI, so they only log when
@@ -57,6 +58,11 @@ def wire_logging(session: AgentSession) -> None:
             return
         log.info("committed  [%s] %s", ev.item.role, ev.item.text_content)
         _log_turn_latency(ev.item)
+        if offer_id:
+            try:
+                asyncio.get_running_loop().create_task(db.touch_offer(offer_id))
+            except RuntimeError:
+                pass
 
 
 def _log_turn_latency(item: ChatMessage) -> None:
@@ -102,7 +108,10 @@ async def _resolve_sip_caller(ctx: JobContext) -> tuple[str | None, list[dict]]:
 async def entrypoint(ctx: JobContext) -> None:
     meta = json.loads(ctx.job.metadata) if ctx.job.metadata else {}
     session = build_session()
-    wire_logging(session)
+    offer_id = meta.get("offer_id") if meta.get("role") == "offer" else None
+    wire_logging(session, offer_id=offer_id)
+    if offer_id:
+        _wire_disconnect_no_answer(ctx, offer_id)
 
     if meta.get("role") == "offer":
         offer = await db.get_offer_full(meta["offer_id"])
@@ -136,6 +145,29 @@ async def entrypoint(ctx: JobContext) -> None:
     # enable recording deliberately (with a signed BAA) for production.
     await session.start(agent=agent, room=ctx.room, record=False)
     await session.generate_reply(instructions=greeting)
+
+
+def _wire_disconnect_no_answer(ctx: JobContext, offer_id: str) -> None:
+    """If the callee hangs up without accepting, flip calling → no_answer."""
+
+    async def _mark() -> None:
+        offer = await db.get_offer_full(offer_id)
+        if offer and offer.get("state") == "calling":
+            await db.set_offer_state(offer_id, "no_answer", ["calling"])
+            await db.log_event("offer_agent", "offer_call", shift_id=offer["shift_id"],
+                               nurse_id=offer["nurse_id"], channel="voice",
+                               outcome="disconnected")
+
+    @ctx.room.on("participant_disconnected")
+    def _on_leave(participant) -> None:
+        kind = getattr(participant, "kind", None)
+        identity = getattr(participant, "identity", "") or ""
+        is_sip = kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+        if is_sip or identity.startswith("phone-"):
+            try:
+                asyncio.get_running_loop().create_task(_mark())
+            except RuntimeError:
+                pass
 
 
 if __name__ == "__main__":

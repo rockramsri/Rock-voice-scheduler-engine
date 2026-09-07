@@ -3,7 +3,7 @@
 Input: a DbSnapshot (audit log + final rows of one run) plus RunArtifacts
 (transcripts + tool spans, needed only by checks 5/7/9) and the Scenario.
 Each check self-skips when the scenario doesn't declare its expectation, so
-one registry runs everywhere. Verdicts:
+one registry runs everywhere (winner_not_stood_down is B2). Verdicts:
 
   CONFIRMED_CORRECT  every gate check passed
   REGRESSION         a gate check failed
@@ -59,7 +59,7 @@ def _nurse_name(snap: DbSnapshot, nurse_id: str) -> str:
     return next((n["name"] for n in snap.nurses if n["id"] == nurse_id), nurse_id)
 
 
-# ---- the 9 checks ----
+# ---- the deterministic checks ----
 
 def ranking_first_contact(snap, scenario, artifacts) -> CheckResult:
     name = "ranking_first_contact"
@@ -310,9 +310,31 @@ def no_context_bleed(snap, scenario, artifacts) -> CheckResult:
     return CheckResult(name=name, status="pass", evidence=f"{len(calls)} calls, no bleed")
 
 
+def winner_not_stood_down(snap, scenario, artifacts) -> CheckResult:
+    name = "winner_not_stood_down"
+    end = scenario.expected_end_state
+    applies = (end and end.status == "filled") or name in scenario.invariants
+    if not applies:
+        return CheckResult(name=name, status="skip", evidence="scenario does not expect a winner")
+    shift = _shift(snap, scenario)
+    winner = shift["nurse_id"] if shift else None
+    if not winner:
+        return CheckResult(name=name, status="fail", evidence="no winner nurse_id on the shift")
+    stood = [e for e in _events(snap, "stand_down") if e.get("nurse_id") == winner]
+    if stood:
+        return CheckResult(name=name, status="fail",
+                           evidence=f"winner {snap.slug(winner)} received a stand_down")
+    accepted = [o for o in snap.offers if o["nurse_id"] == winner]
+    if accepted and accepted[0]["state"] != "accepted":
+        return CheckResult(name=name, status="fail",
+                           evidence=f"winner offer state is {accepted[0]['state']!r}")
+    return CheckResult(name=name, status="pass",
+                       evidence=f"winner {snap.slug(winner)} not stood down")
+
+
 ALL_CHECKS = (ranking_first_contact, quiet_hours, single_winner_lock, no_double_text,
               scope_two_tools, human_fallback, turn_budget_endstate,
-              audit_completeness, no_context_bleed)
+              audit_completeness, no_context_bleed, winner_not_stood_down)
 
 
 def run_oracle(snap: DbSnapshot, scenario: Scenario,

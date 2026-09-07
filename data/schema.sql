@@ -85,6 +85,7 @@ create table offers (
     last_channel text,
     last_touch_at timestamptz,
     responded_at timestamptz,
+    call_room text,                             -- LiveKit room for the live offer call
     unique (shift_id, nurse_id)                 -- retries can never double-text
 );
 

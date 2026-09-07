@@ -19,8 +19,9 @@ from workplane import emr
 
 log = logging.getLogger("workplane.offers")
 
-RESPONDABLE = ["scored", "messaged", "calling", "fallback"]
+RESPONDABLE = ["scored", "messaged", "calling", "fallback", "no_answer"]
 STAND_DOWN_FROM = ["scored", "messaged", "calling", "no_answer", "fallback"]
+REPAIR_FROM = RESPONDABLE + ["stood_down"]
 
 _background: set[asyncio.Task] = set()
 
@@ -29,13 +30,18 @@ async def accept_offer(offer: dict) -> bool:
     """First YES wins. Returns False when someone else already got the shift."""
     won = await db.lock_shift(offer["shift_id"], offer["nurse_id"])
     if won:
-        await db.set_offer_state(offer["id"], "accepted", RESPONDABLE)
+        if not await db.set_offer_state(offer["id"], "accepted", RESPONDABLE):
+            await db.set_offer_state(offer["id"], "accepted", REPAIR_FROM)
+            await db.log_event("workplane", "state_repair", shift_id=offer["shift_id"],
+                               nurse_id=offer["nurse_id"], outcome="accepted",
+                               payload={"offer_id": offer["id"]})
+            log.warning("offer %s state_repair to accepted after won lock", offer["id"])
         log.info("offer %s ACCEPTED - shift %s filled", offer["id"], offer["shift_id"])
         shift = offer.get("shifts") or {"id": offer["shift_id"]}
         await emr.post_chart_event(
             "shift_reassigned", shift, nurse_id=offer["nurse_id"],
             details={"assigned_nurse": (offer.get("nurses") or {}).get("name", "")})
-        task = asyncio.create_task(stand_down_losers(offer["shift_id"]))
+        task = asyncio.create_task(stand_down_losers(offer["shift_id"], offer["id"]))
         _background.add(task)
         task.add_done_callback(_background.discard)
     else:
@@ -46,13 +52,14 @@ async def accept_offer(offer: dict) -> bool:
     return won
 
 
-async def stand_down_losers(shift_id: str) -> None:
+async def stand_down_losers(shift_id: str, winner_offer_id: str | None = None) -> None:
     """Tell every still-open prospect the shift is covered; mark them stood_down."""
     from channels import sms  # local import: keeps voice plane free of channel deps
 
     try:
         shift = await db.get_shift(shift_id)
-        losers = await db.offers_for_shift(shift_id, states=STAND_DOWN_FROM)
+        losers = [o for o in await db.offers_for_shift(shift_id, states=STAND_DOWN_FROM)
+                  if o["id"] != winner_offer_id]
         when = spoken_when(shift["starts_at"], shift["ends_at"])
         agency = db.agency_display_name(shift)
         text = (f"{agency}: the {when} {shift['specialty']} shift in "

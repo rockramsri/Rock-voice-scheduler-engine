@@ -93,6 +93,8 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
             meta["override"] = True
         result = await outbound.place_call(
             phone, room_name=f"offer-{offer['id'][:8]}", metadata=json.dumps(meta))
+        if result.get("ok") and result.get("room"):
+            await db.set_offer_call_room(offer["id"], result["room"])
         outcome = "dialing" if result.get("ok") else "dial_failed"
     if override:
         await db.log_event("worker", "preference_override_ask", shift_id=shift["id"],
