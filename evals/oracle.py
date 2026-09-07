@@ -26,7 +26,7 @@ OUTREACH_KINDS = ("offer_sent", "offer_call")
 ALLOWED_TOOLS = {
     "offer_agent": {"accept_this_shift", "decline_this_shift", "get_caller_context"},
     "sms_agent": {"get_my_next_shift", "decline_pending_offer", "get_caller_context"},
-    "front_desk": {"get_my_next_shift", "report_my_callout"},
+    "front_desk": {"get_my_next_shift", "list_my_upcoming_shifts", "report_my_callout"},
 }
 
 # End-state <-> audit-event pairs for audit_completeness (both directions).

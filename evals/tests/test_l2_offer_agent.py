@@ -28,7 +28,8 @@ def _function_names(result) -> list[str]:
             item = getattr(ev, "item", ev)
             n = getattr(item, "name", None)
             if n in {"accept_this_shift", "decline_this_shift",
-                     "report_my_callout", "get_my_next_shift"}:
+                     "report_my_callout", "get_my_next_shift",
+                     "list_my_upcoming_shifts"}:
                 names.append(n)
     return names
 
@@ -108,6 +109,10 @@ async def test_frontdesk_callout_uses_report_my_callout():
         agent = FrontDesk(caller_phone="+15551239101", matches=[FAKE_NURSE_MATCH])
         with mock_tools(FrontDesk, {
             "report_my_callout": record_callout(calls),
+            "list_my_upcoming_shifts": lambda nurse_name="": (
+                "Ana Reyes, your next 2 shifts: 1. wound care visit Tuesday "
+                "8am to 4pm in Jersey City. 2. wound care visit Thursday 8am "
+                "to 4pm in Jersey City."),
             "get_my_next_shift": lambda nurse_name="": (
                 "Ana Reyes, your next shift is a wound care visit Tuesday 8am "
                 "to 4pm in Jersey City."),

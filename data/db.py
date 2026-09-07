@@ -95,12 +95,18 @@ async def find_nurses_by_phone(phone: str) -> list[dict]:
     return [n for n in nurses if _phone_digits(n.get("phone") or "")[-10:] == wanted]
 
 
-async def next_shift_for(nurse_id: str) -> dict | None:
+async def upcoming_shifts_for(nurse_id: str, limit: int = 3) -> list[dict]:
+    """Next scheduled shifts for this nurse, soonest first."""
     result = await _run(lambda: client().table("shifts")
                         .select("*, patients(name, area)")
                         .eq("nurse_id", nurse_id).eq("status", "scheduled")
-                        .order("starts_at").limit(1).execute())
-    return result.data[0] if result.data else None
+                        .order("starts_at").limit(limit).execute())
+    return result.data or []
+
+
+async def next_shift_for(nurse_id: str) -> dict | None:
+    rows = await upcoming_shifts_for(nurse_id, limit=1)
+    return rows[0] if rows else None
 
 
 def agency_display_name(row: dict | None, default: str = "the agency") -> str:

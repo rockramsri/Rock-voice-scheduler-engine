@@ -52,9 +52,11 @@ def record_decline(calls: list[dict]):
 
 
 def record_callout(calls: list[dict]):
-    def report_my_callout(reason: str, nurse_name: str = "") -> str:
-        calls.append({"reason": reason, "nurse_name": nurse_name})
-        return ("Callout recorded for your Tuesday shift. Replacement outreach "
+    def report_my_callout(shift_ref: str = "", reason: str = "",
+                          nurse_name: str = "") -> str:
+        calls.append({"shift_ref": shift_ref, "reason": reason,
+                      "nurse_name": nurse_name})
+        return ("Callout recorded for your Thursday shift. Replacement outreach "
                 "has already started — nothing else is needed from you.")
     return report_my_callout
 

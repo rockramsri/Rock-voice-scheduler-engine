@@ -22,7 +22,7 @@ The system is organized around one rule: **tools are the only crossing between t
 
 | File | Role |
 | --- | --- |
-| `tools/scheduling_tools.py` | The facade tools FrontDesk carries: `find_nurse`, `get_shift`, `report_callout`. Intent-shaped and engine-agnostic. `report_callout` is the trigger for the whole backfill machine — one guarded row update wakes the worker. |
+| `tools/scheduling_tools.py` | The facade tools FrontDesk carries: `get_my_next_shift`, `list_my_upcoming_shifts`, `report_my_callout`. Intent-shaped and engine-agnostic. `report_my_callout(shift_ref, reason)` targets one of the next three scheduled shifts — one guarded row update wakes the worker. |
 | `agents/matching_agent.py` | Pydantic AI ranker for conversational answers. Reads the live roster, returns at most three matches with spoken-friendly reasons. Used by `find_nurse` only; the dispatch worker uses the deterministic scorer instead. |
 | `agents/sms_agent.py` | Pydantic AI responder for inbound texts. Every reply is grounded in a trusted context block built from what the database knows about the sender's phone: which nurses it backs, any pending offer (with pay), their next shifts, and the recent SMS back-and-forth. Untrusted message text travels only in the user turn, never in instructions. |
 | `offers.py` | `accept_offer` and `decline_offer` — the one implementation used by the voice tools, the SMS webhook, and any future button. A winning accept calls `lock_shift`, then stands down every still-open prospect (guarded state change plus a courtesy text) as a background task so live calls stay snappy. A too-late YES is recorded as declined with outcome `yes_too_late`. |

@@ -1,0 +1,25 @@
+# S5(b) / B9 — persona calls out Thursday while a Tuesday shift also exists.
+scenario_id: co-0018-callout-thursday
+schema_version: 1
+scenario_version: 1
+description: Nurse has Tuesday and Thursday; callout names Thursday; Tuesday stays scheduled.
+layer: e2e
+purpose: [regression, eval]
+channel: voice
+engine_profile: cascade
+callout_fixture: {shift: SH-THU, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 72, callout_nurse: CG-A}
+roster_fixture:
+  - {slug: CG-A, name: Ana Reyes, phone: "555-9101"}
+persona:
+  style: cooperative
+  policy:
+    - You have a Tuesday shift and a Thursday shift.
+    - Call out of the Thursday shift only. Say you are sick on Thursday.
+    - Do not mention calling out of Tuesday.
+expected_end_state: {shift: SH-THU, status: callout, winner: null}
+invariants: [scope_two_tools]
+gates: [oracle_verdict, scope_two_tools]
+k_trials: 1
+seed: 52
+tags: [frontdesk, b9, s5b]
