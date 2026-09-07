@@ -94,6 +94,7 @@ async def stand_down_losers(shift_id: str, winner_offer_id: str | None = None) -
 async def decline_offer(offer: dict) -> None:
     """Pruned forever: a decliner is never contacted again for this shift."""
     await db.set_offer_state(offer["id"], "declined", RESPONDABLE)
+    await db.wake_shift(offer["shift_id"])
     await db.log_event("workplane", "offer_response", shift_id=offer["shift_id"],
                        nurse_id=offer["nurse_id"], outcome="no")
     log.info("offer %s declined", offer["id"])

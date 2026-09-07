@@ -351,6 +351,14 @@ async def lock_shift(shift_id: str, nurse_id: str) -> bool:
     return bool(result.data)
 
 
+async def wake_shift(shift_id: str) -> bool:
+    """Pull a parked callout/offers_out shift back onto the worker poll."""
+    result = await _run(lambda: client().table("shifts").update({
+        "next_action_at": "now()",
+    }).eq("id", shift_id).in_("status", ["callout", "offers_out"]).execute())
+    return bool(result.data)
+
+
 async def increment_rescore_rounds(shift_id: str) -> int:
     n = await _run(lambda: client().rpc(
         "increment_rescore_rounds", {"p_shift": shift_id}).execute())

@@ -154,6 +154,7 @@ def _wire_disconnect_no_answer(ctx: JobContext, offer_id: str) -> None:
         offer = await db.get_offer_full(offer_id)
         if offer and offer.get("state") == "calling":
             await db.set_offer_state(offer_id, "no_answer", ["calling"])
+            await db.wake_shift(offer["shift_id"])
             await db.log_event("offer_agent", "offer_call", shift_id=offer["shift_id"],
                                nurse_id=offer["nurse_id"], channel="voice",
                                outcome="disconnected")

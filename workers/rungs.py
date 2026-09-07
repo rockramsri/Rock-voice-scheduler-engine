@@ -83,6 +83,7 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
                  or now() - datetime.fromisoformat(touched_at) > CALLING_STALE)
         if stale:  # rang out / never answered / unknown
             await db.set_offer_state(offer["id"], "no_answer", ["calling"])
+            await db.wake_shift(shift["id"])
         else:
             await db.release_shift(shift["id"], status="offers_out", rung=rung.number,
                                    next_action_at=(now() + CALLING_STALE).isoformat())
@@ -147,8 +148,14 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
     await db.log_event("worker", "offer_call", shift_id=shift["id"],
                        nurse_id=offer["nurse_id"], channel="voice",
                        rung=rung.number, outcome=outcome)
+    # A live call keeps the 3-minute wait; a no-answer wakes the next burst now.
+    if outcome == "dialing":
+        next_at = now() + timedelta(minutes=rung.wait_minutes)
+    else:
+        next_at = now()
+        await db.wake_shift(shift["id"])
     await db.release_shift(shift["id"], status="offers_out", rung=rung.number,
-                           next_action_at=(now() + timedelta(minutes=rung.wait_minutes)).isoformat())
+                           next_action_at=next_at.isoformat())
 
 
 async def _widen_the_net(shift: dict, agency: dict) -> bool:
