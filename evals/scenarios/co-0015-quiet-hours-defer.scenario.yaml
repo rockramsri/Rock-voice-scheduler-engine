@@ -1,0 +1,22 @@
+# V7 — frozen 03:00, relaxed lead; texts and calls defer (B10).
+scenario_id: co-0015-quiet-hours-defer
+schema_version: 1
+scenario_version: 1
+description: Relaxed shift at 03:00 local; outreach waits for quiet_end.
+layer: e2e
+purpose: [regression, eval]
+channel: ladder
+engine_profile: cascade
+frozen_now: "2026-08-20T03:00:00-04:00"
+quiet_hours_expect: defer
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 30, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "+12025551212"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+expected_end_state: {shift: SH-1, status: offers_out, winner: null}
+invariants: [quiet_hours]
+gates: [oracle_verdict, quiet_hours]
+k_trials: 1
+seed: 53
+tags: [ladder, b10, v7]

@@ -318,8 +318,8 @@ def quiet_snap(next_action_at: str | None, status: str = "offers_out") -> DbSnap
     snap.offers[0]["state"] = "messaged"
     snap.offers[1]["state"] = "messaged"
     snap.events = [e for e in snap.events if e["kind"] in
-                   ("shift_status_changed", "callout_recorded", "prospects_scored",
-                    "offer_sent") and (e.get("payload") or {}).get("to") != "filled"]
+                   ("shift_status_changed", "callout_recorded", "prospects_scored")
+                   and (e.get("payload") or {}).get("to") != "filled"]
     return snap
 
 
@@ -347,6 +347,25 @@ def test_call_dialed_in_quiet_window_fails():
     scn = scenario(quiet_hours_expect="defer", frozen_now=FROZEN,
                    expected_end_state=EndState(shift="SH-1", status="offers_out", winner=None))
     assert one(oracle.quiet_hours, snap, scn).status == "fail"
+
+
+def test_text_sent_in_quiet_window_fails():
+    snap = quiet_snap(NEXT_OK)
+    snap.events.append(ev(20, "offer_sent", nurse="CG-101", channel="sms",
+                          rung=1, outcome="sent"))
+    scn = scenario(quiet_hours_expect="defer", frozen_now=FROZEN,
+                   expected_end_state=EndState(shift="SH-1", status="offers_out", winner=None))
+    assert one(oracle.quiet_hours, snap, scn).status == "fail"
+
+
+def test_text_allowed_when_quiet_hours_texts_off():
+    snap = quiet_snap(NEXT_OK)
+    snap.agencies[0] = {**snap.agencies[0], "quiet_hours_texts": False}
+    snap.events.append(ev(20, "offer_sent", nurse="CG-101", channel="sms",
+                          rung=1, outcome="sent"))
+    scn = scenario(quiet_hours_expect="defer", frozen_now=FROZEN,
+                   expected_end_state=EndState(shift="SH-1", status="offers_out", winner=None))
+    assert one(oracle.quiet_hours, snap, scn).status == "pass"
 
 
 def test_urgent_quiet_escalation_passes():

@@ -54,7 +54,7 @@ Lead time picks the plan, re-evaluated on every rung so a shift drifting closer 
 | NORMAL | between 5h and 24h | SMS, wait 30m; WhatsApp, wait 120m; then voice |
 | URGENT | 5h or less | SMS and WhatsApp together, wait 10m; then voice |
 
-The thresholds (5h, 24h) and quiet hours are columns on `agencies` — data, not code. The voice rung repeats, one prospect per visit, so at most one call is live per shift at a time. Decliners are pruned forever; only silent prospects get called. **Quiet hours gate calls: none at or after 22:00, none before 06:00, agency-local.** A relaxed shift waits for the window to reopen; an urgent shift inside quiet hours escalates to a human instead, because texting someone at 3am about a 6am shift is a decision a person should make.
+The thresholds (5h, 24h) and quiet hours are columns on `agencies` — data, not code. The voice rung repeats, one prospect per visit, so at most one call is live per shift at a time. Decliners are pruned forever; only silent prospects get called. **Quiet hours gate calls and texts when `agencies.quiet_hours_texts` is true (the default): none at or after 22:00, none before 06:00, agency-local.** A relaxed shift waits for the window to reopen; an urgent shift inside quiet hours escalates to a human instead, because texting someone at 3am about a 6am shift is a decision a person should make. Set `quiet_hours_texts` false to send SMS/WhatsApp any hour and only gate voice.
 
 Each nurse also carries `preferences.channels` (editable in the console); the ladder skips any channel a nurse is not comfortable with.
 

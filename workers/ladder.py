@@ -1,4 +1,4 @@
-"""Outreach ladder — lead time picks the plan, quiet hours gate the calls.
+"""Outreach ladder — lead time picks the plan, quiet hours gate outreach.
 
 Pure functions only (no I/O) so the escalation policy is trivially
 testable. The plan is re-picked from CURRENT lead time on every rung, so a

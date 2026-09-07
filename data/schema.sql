@@ -12,6 +12,7 @@ create table agencies (
     timezone text not null default 'America/New_York',
     quiet_start smallint not null default 22,   -- no calls at/after 10pm
     quiet_end smallint not null default 6,      -- no calls before 6am
+    quiet_hours_texts boolean not null default true,  -- texts follow the same window
     urgent_lead_hours int not null default 5,
     relaxed_lead_hours int not null default 24
 );

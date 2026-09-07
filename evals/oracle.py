@@ -9,9 +9,9 @@ one registry runs everywhere (winner_not_stood_down is B2). Verdicts:
   REGRESSION         a gate check failed
   UNRESOLVED         a gate check could not run (missing evidence) — never a pass
 
-Quiet-hours semantics deliberately match the code, not the brief: quiet hours
-gate CALLS only (texts send any hour), and urgent-inside-quiet ESCALATES
-(workers/rungs.py). See ARCHITECTURE.md discrepancy D2.
+Quiet-hours semantics: when agencies.quiet_hours_texts is true (the default)
+both calls and texts defer; urgent-inside-quiet still ESCALATES. Set the
+flag false to restore call-only gating. See docs/decisions.md.
 """
 
 from __future__ import annotations
@@ -103,10 +103,15 @@ def quiet_hours(snap, scenario, artifacts) -> CheckResult:
     if dialing:
         return CheckResult(name=name, status="fail",
                            evidence=f"{len(dialing)} call(s) dialed inside the quiet window")
+    agency = snap.agencies[0]
+    if agency.get("quiet_hours_texts", True):
+        texts = _events(snap, "offer_sent")
+        if texts:
+            return CheckResult(name=name, status="fail",
+                               evidence=f"{len(texts)} text(s) sent inside the quiet window")
     shift = _shift(snap, scenario)
     if shift is None:
         return CheckResult(name=name, status="fail", evidence="target shift not found")
-    agency = snap.agencies[0]
     if scenario.quiet_hours_expect == "defer":
         if shift["status"] != "offers_out" or not shift.get("next_action_at"):
             return CheckResult(name=name, status="fail", evidence=(

@@ -24,6 +24,15 @@ CALLING_STALE = timedelta(minutes=3)
 
 
 async def message_rung(shift: dict, rung: ladder.Rung, agency: dict) -> None:
+    if agency.get("quiet_hours_texts", True) and not ladder.in_call_window(now(), agency):
+        lead = (datetime.fromisoformat(shift["starts_at"]) - now()).total_seconds() / 3600
+        if lead <= agency["urgent_lead_hours"]:
+            await escalate(shift, "urgent shift inside quiet hours")
+        else:
+            window = ladder.next_call_window(now(), agency)
+            await db.release_shift(shift["id"], status="offers_out", rung=shift.get("rung") or 0,
+                                   next_action_at=window.isoformat())
+        return
     text = _offer_text(shift, agency)
     failed_only = True
     attempted = False
