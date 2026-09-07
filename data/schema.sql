@@ -87,8 +87,19 @@ create table offers (
     responded_at timestamptz,
     call_room text,                             -- LiveKit room for the live offer call
     dial_attempts int not null default 0,       -- transient SIP failures; 2 → no_answer
+    last_send_error text,                       -- last provider error; retry same rung
+    send_failures int not null default 0,       -- cap 2 then send_abandoned
     unique (shift_id, nurse_id)                 -- retries can never double-text
 );
+
+create or replace function record_send_failure(p_offer uuid, p_error text)
+returns int language sql as $$
+    update offers
+       set last_send_error = p_error,
+           send_failures = coalesce(send_failures, 0) + 1
+     where id = p_offer
+    returning send_failures;
+$$;
 
 create or replace function bump_dial_attempts(p_offer uuid)
 returns int language sql as $$

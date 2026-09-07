@@ -310,6 +310,27 @@ def no_context_bleed(snap, scenario, artifacts) -> CheckResult:
     return CheckResult(name=name, status="pass", evidence=f"{len(calls)} calls, no bleed")
 
 
+def retry_no_duplicate(snap, scenario, artifacts) -> CheckResult:
+    name = "retry_no_duplicate"
+    if name not in scenario.invariants:
+        return CheckResult(name=name, status="skip", evidence="not in invariants")
+    sent = [e for e in _events(snap, "offer_sent") if e.get("outcome") == "sent"]
+    if len(sent) != 1:
+        return CheckResult(name=name, status="fail",
+                           evidence=f"{len(sent)} offer_sent outcome=sent (want 1)")
+    failed = [e for e in _events(snap, "offer_sent")
+              if str(e.get("outcome") or "").startswith("failed")]
+    if not failed:
+        return CheckResult(name=name, status="fail",
+                           evidence="expected a failed send before the successful retry")
+    rungs = {e.get("rung") for e in sent + failed}
+    if len(rungs) != 1:
+        return CheckResult(name=name, status="fail",
+                           evidence=f"retry used multiple rungs: {rungs}")
+    return CheckResult(name=name, status="pass",
+                       evidence="one sent after a failed attempt on the same rung")
+
+
 def winner_not_stood_down(snap, scenario, artifacts) -> CheckResult:
     name = "winner_not_stood_down"
     end = scenario.expected_end_state
@@ -334,7 +355,8 @@ def winner_not_stood_down(snap, scenario, artifacts) -> CheckResult:
 
 ALL_CHECKS = (ranking_first_contact, quiet_hours, single_winner_lock, no_double_text,
               scope_two_tools, human_fallback, turn_budget_endstate,
-              audit_completeness, no_context_bleed, winner_not_stood_down)
+              audit_completeness, no_context_bleed, winner_not_stood_down,
+              retry_no_duplicate)
 
 
 def run_oracle(snap: DbSnapshot, scenario: Scenario,

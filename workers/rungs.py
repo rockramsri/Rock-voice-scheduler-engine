@@ -25,18 +25,39 @@ CALLING_STALE = timedelta(minutes=3)
 
 async def message_rung(shift: dict, rung: ladder.Rung, agency: dict) -> None:
     text = _offer_text(shift, agency)
+    failed_only = True
+    attempted = False
     for offer in await db.offers_for_shift(shift["id"], states=["scored", "messaged"]):
         channels = [c for c in rung.channels if c in _allowed_channels(offer)]
         if not channels:
             continue  # nurse is not comfortable with any channel in this rung
-        if not await db.bump_offer_rung(offer["id"], rung.number, "+".join(channels)):
+        retrying = bool(offer.get("last_send_error")) and offer.get("rung") == rung.number
+        if retrying:
+            if (offer.get("send_failures") or 0) >= 2:
+                await db.log_event("worker", "offer_sent", shift_id=shift["id"],
+                                   nurse_id=offer["nurse_id"], channel=offer.get("last_channel"),
+                                   rung=rung.number, outcome="send_abandoned")
+                continue
+        elif not await db.bump_offer_rung(offer["id"], rung.number, "+".join(channels)):
             continue  # this rung already touched this offer (crash resume)
+        attempted = True
+        rung_ok = False
         for channel in channels:
             outcome = await _send(channel, offer["nurses"]["phone"], text)
             await db.log_event("worker", "offer_sent", shift_id=shift["id"],
                                nurse_id=offer["nurse_id"], channel=channel,
                                rung=rung.number, outcome=outcome)
-    next_at = now() + timedelta(minutes=rung.wait_minutes)
+            if outcome == "sent":
+                rung_ok = True
+                await db.clear_send_error(offer["id"])
+            elif outcome.startswith("failed"):
+                await db.record_send_failure(offer["id"], outcome)
+        if rung_ok:
+            failed_only = False
+    if attempted and failed_only:
+        next_at = now() + timedelta(seconds=60)
+    else:
+        next_at = now() + timedelta(minutes=rung.wait_minutes)
     await db.release_shift(shift["id"], status="offers_out", rung=rung.number,
                            next_action_at=next_at.isoformat())
     log.info("shift %s rung %d done, next check %s", shift["id"][:8], rung.number, next_at)

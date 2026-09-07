@@ -158,6 +158,19 @@ def test_winner_not_stood_down_passes_golden():
     assert one(oracle.winner_not_stood_down, golden(), scenario()).status == "pass"
 
 
+def test_retry_no_duplicate_wants_one_sent_after_fail():
+    snap = golden()
+    check = one(oracle.retry_no_duplicate, snap, scenario(invariants=["retry_no_duplicate"]))
+    assert check.status == "fail"  # golden has two sent, no failed
+    snap.events = [e for e in snap.events if e["kind"] != "offer_sent"]
+    snap.events += [
+        ev(6, "offer_sent", nurse="CG-101", channel="sms", rung=1, outcome="failed: 500"),
+        ev(7, "offer_sent", nurse="CG-101", channel="sms", rung=1, outcome="sent"),
+    ]
+    assert one(oracle.retry_no_duplicate, snap,
+               scenario(invariants=["retry_no_duplicate"])).status == "pass"
+
+
 def test_unresolved_loser_offer_fails():
     snap = golden()
     snap.offers[1]["state"] = "messaged"   # loser never stood down

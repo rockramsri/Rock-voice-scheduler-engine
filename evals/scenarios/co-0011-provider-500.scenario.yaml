@@ -1,0 +1,21 @@
+# V4 — first send_sms fails; the same rung retries and lands one sent (B5).
+scenario_id: co-0011-provider-500
+schema_version: 1
+scenario_version: 1
+description: Provider 500 on the first SMS; retry succeeds with one bump.
+layer: e2e
+purpose: [regression, eval]
+channel: ladder
+engine_profile: cascade
+callout_fixture: {shift: SH-1, specialty: wound care, area: Jersey City,
+                  starts_in_hours: 26, callout_nurse: CG-330}
+roster_fixture:
+  - {slug: CG-101, name: Ana Reyes, phone: "+12025551212"}
+  - {slug: CG-330, name: Carla Jones, phone: "555-9330"}
+expected_end_state: {shift: SH-1, status: offers_out, winner: null}
+expected_rank_order: [CG-101]
+invariants: [retry_no_duplicate, no_double_text]
+gates: [oracle_verdict, retry_no_duplicate]
+k_trials: 1
+seed: 49
+tags: [ladder, b5, v4]
