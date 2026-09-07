@@ -93,9 +93,28 @@ async def voice_rung(shift: dict, rung: ladder.Rung, agency: dict,
             meta["override"] = True
         result = await outbound.place_call(
             phone, room_name=f"offer-{offer['id'][:8]}", metadata=json.dumps(meta))
-        if result.get("ok") and result.get("room"):
-            await db.set_offer_call_room(offer["id"], result["room"])
-        outcome = "dialing" if result.get("ok") else "dial_failed"
+        if result.get("ok"):
+            if result.get("room"):
+                await db.set_offer_call_room(offer["id"], result["room"])
+            outcome = "dialing"
+        else:
+            attempts = await db.bump_dial_attempts(offer["id"])
+            if attempts < 2:
+                back = "messaged" if (offer.get("rung") or 0) > 0 else "scored"
+                await db.set_offer_state(offer["id"], back, ["calling"])
+                outcome = "dial_failed"
+                await db.log_event("worker", "offer_call", shift_id=shift["id"],
+                                   nurse_id=offer["nurse_id"], channel="voice",
+                                   rung=rung.number, outcome=outcome,
+                                   payload={"attempts": attempts})
+                await db.release_shift(shift["id"], status="offers_out",
+                                       rung=rung.number,
+                                       next_action_at=(now() + timedelta(seconds=30)).isoformat())
+                log.info("voice rung: %s dial_failed, retry in 30s",
+                         offer["nurses"]["name"])
+                return
+            await db.set_offer_state(offer["id"], "no_answer", ["calling"])
+            outcome = "dial_failed_x2"
     if override:
         await db.log_event("worker", "preference_override_ask", shift_id=shift["id"],
                            nurse_id=offer["nurse_id"], channel="voice",

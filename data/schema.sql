@@ -86,8 +86,17 @@ create table offers (
     last_touch_at timestamptz,
     responded_at timestamptz,
     call_room text,                             -- LiveKit room for the live offer call
+    dial_attempts int not null default 0,       -- transient SIP failures; 2 → no_answer
     unique (shift_id, nurse_id)                 -- retries can never double-text
 );
+
+create or replace function bump_dial_attempts(p_offer uuid)
+returns int language sql as $$
+    update offers
+       set dial_attempts = coalesce(dial_attempts, 0) + 1
+     where id = p_offer
+    returning dial_attempts;
+$$;
 
 -- Inbound webhook idempotency: TextBelt (and Twilio) deliver at-least-once.
 -- First insert of (provider, external_id) wins; a replay is a unique conflict.

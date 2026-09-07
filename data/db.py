@@ -316,6 +316,12 @@ async def set_offer_call_room(offer_id: str, room: str) -> None:
                .eq("id", offer_id).execute())
 
 
+async def bump_dial_attempts(offer_id: str) -> int:
+    result = await _run(lambda: client().rpc(
+        "bump_dial_attempts", {"p_offer": offer_id}).execute())
+    return int(result.data or 0)
+
+
 async def set_offer_state(offer_id: str, to_state: str, from_states: list[str]) -> bool:
     # Stamp last_touch_at on every transition so a scored->calling jump (a
     # voice-only prospect never messaged) leaves a non-null timestamp for the
