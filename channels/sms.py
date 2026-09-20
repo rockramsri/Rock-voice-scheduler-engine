@@ -5,7 +5,7 @@ raises, because messaging must not take down a live call. SMS goes through
 TextBelt exclusively (Twilio US SMS is A2P-blocked: it returns 201 then the
 carrier drops the message). Replies ride TextBelt's replyWebhookUrl back to
 our webhook. WhatsApp still rides Twilio's Messages API with a `whatsapp:`
-prefix. Phase 3 puts pgmq workers in front of all of these.
+prefix. Sends stay inline so a crash costs one missed message, never a duplicate.
 """
 
 from __future__ import annotations

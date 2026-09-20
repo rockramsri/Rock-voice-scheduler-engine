@@ -252,9 +252,10 @@ Rock-scheduler-voice-agent/
 │   ├── tools/              # caller-scoped facade tools: get_my_next_shift, report_my_callout
 │   ├── agents/             # matching_agent (spoken ranking), sms_agent (inbound texts)
 │   └── offers.py           # accept/decline + lock + stand-downs, the ONE implementation
-├── workers/                # dispatch_worker loop, ladder policy, scoring, rung execution
+├── workers/                # dispatch_worker, outbox_worker, ladder, scoring, rungs
 ├── channels/               # transport: SIP plumbing, outbound calls, SMS/WhatsApp, webhook, CLI
-├── data/                   # schema.sql, dashboard.sql, db.py (all Postgres access), seed.py
+├── data/                   # schema.sql, dashboard.sql, emr.sql, db.py, import_fhir.py, seed.py
+├── lab/                    # local HAPI / Medplum / OpenEMR compose + probes
 ├── shared/                 # config.py (the only env reader), phone.py, spoken.py
 ├── ops-console/            # React ops console: live story graph + workflow rail
 ├── evals/                  # the Eval Lab: simulated nurses grade the real engine
@@ -271,6 +272,7 @@ Rock-scheduler-voice-agent/
 | [docs/memory.md](docs/memory.md) | caregiver memory: write/read paths, the override ladder, self-promoting preferences |
 | [docs/architecture.md](docs/architecture.md) | component-by-component walkthrough, ER diagram, shift and offer state machines |
 | [docs/deployment.md](docs/deployment.md) | the three configs in depth: component tables, env matrix, a reference docker-compose blueprint, capacity planning |
+| [docs/emr-architecture.md](docs/emr-architecture.md) | EHR outbox, FHIR profiles (HAPI / Medplum / OpenEMR), sync-in, import CLI |
 | [docs/decisions.md](docs/decisions.md) | why Postgres, why so few tables, the discipline rules, ladder, identity, channels, scoring |
 | [docs/demo.md](docs/demo.md) | the solo one-phone demo playbook, start to finish |
 

@@ -1,7 +1,7 @@
-# EMR/EHR integration layer — architecture (Stage 1 deliverable)
+# EMR/EHR integration layer — architecture
 
-Status: awaiting approval. No implementation code exists yet; this document is the
-contract for Stage 2. Companions: [architecture](architecture.md),
+Status: implemented (M1–M7, 2026-09-20). This document is the contract the
+code follows. Companions: [architecture](architecture.md),
 [decisions](decisions.md), [deployment](deployment.md).
 
 Scope agreed in design review (2026-09-19): **FHIR depth first** — interface +
@@ -385,10 +385,9 @@ Proposals (each marked, with reason):
    imported"): real onboarding must import phones — they're mandatory for
    outreach. Lab default remains fake 555s; after first import the field is
    Rock-owned (sync never overwrites it).
-7. **pgmq cleanup covers all four mentions** (`channels/sms.py:8`,
-   `channels/outbound.py:3-5`, `docs/decisions.md:30`,
-   `ops-console/README.md:46`) so the final `grep -rn pgmq` gate passes
-   honestly.
+7. **No extra broker for outreach.** SMS and outbound calls stay inline
+   (one missed send on crash, never a duplicate). The EHR `outbox` is the
+   only new queue, and it is ids-only.
 8. **OpenEMR runs capability-adaptive**: the profile encodes today's confirmed
    limits, but `capabilities()` from `/metadata` decides at runtime, so a
    future image with Appointment writes upgrades behavior with zero code.
@@ -415,7 +414,7 @@ Risks:
 | M4 | Sync-in: `/emr/medplum/hook` (X-Signature verify, receipts), pull tick, upsert rules, `data/fhir_sync.py` | Scenario 8: rename shows in `nurses`, phone untouched, deactivate propagates |
 | M5 | `openemr` profile + quirks + REST appointment fallback; lab compose gains OpenEMR | Which scenarios pass vs documented-unsupported, with reasons |
 | M6 | Onboarding: `data/import_fhir.py` (+`--real-phones`), Synthea sample load, `make lab-seed`, `data/seed.py --lab` | Import counts printed; lab seed idempotent |
-| M7 | Docs (architecture/decisions/deployment/README/evals), pgmq cleanup, proprietary stubs, Railway drainer service | `grep -rn pgmq` empty; new decisions entry; Railway service live on mock |
+| M7 | Docs (architecture/decisions/deployment/README/evals), outreach stays inline, proprietary stubs, Railway drainer notes | decisions entry for the EHR outbox; AxisCare/WellSky stubs; `python -m workers.outbox_worker` on Railway |
 
 Deferred backlog (interface-ready, no schema changes needed): HL7 v2 driver
 (SIU over MLLP, OIE/Mirth lab, hl7apy decision), Epic read-only import (SMART

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from workplane.emr.base import EmrClient, EmrPermanentError
 from workplane.emr.mock_driver import MockDriver
+from workplane.emr.stubs import AxisCareDriver, WellSkyDriver
 
 # fhir + vendor aliases all share FhirDriver; the profile is the vendor knob.
 _FHIR = {"fhir", "hapi", "medplum", "openemr"}
+_STUBS = {"axiscare": AxisCareDriver, "wellsky": WellSkyDriver}
 
 
 def build_client(agency: dict) -> EmrClient:
@@ -23,4 +25,7 @@ def build_client(agency: dict) -> EmrClient:
         from workplane.emr.profiles import load_profile
         profile = agency.get("emr_profile") or (backend if backend != "fhir" else "generic")
         return FhirDriver(agency, load_profile(profile))
+    stub = _STUBS.get(backend)
+    if stub:
+        return stub()
     raise EmrPermanentError(f"unknown emr_backend: {backend!r}")

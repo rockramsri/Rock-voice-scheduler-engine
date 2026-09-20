@@ -111,6 +111,12 @@ services:
     deploy:
       replicas: 2               # safe: claims use FOR UPDATE SKIP LOCKED
 
+  rock-outbox:
+    build: .
+    command: python -m workers.outbox_worker
+    env_file: .env.selfhosted
+    depends_on: [postgres]
+
   rock-webhook:
     build: .
     command: python -m channels.cli serve
@@ -143,7 +149,15 @@ Workers scale horizontally with zero coordination, because claiming uses `FOR UP
 | STT / LLM / TTS | Deepgram nova-3, OpenAI gpt-4.1-mini, Cartesia sonic-3 | Vendor plugin when its key is set; otherwise the same model through LiveKit Inference — one LiveKit key covers STT and TTS. |
 | Data plane | Supabase cloud | Engine writes with the service role; console reads with the anon key. |
 | PSTN | Twilio | Voice is unaffected by A2P; US SMS is TextBelt until 10DLC clears. |
-| Your processes | Anywhere | Voice worker, dispatch worker, webhook (public via ngrok or a real URL), console. |
+| Your processes | Anywhere | Voice worker, dispatch worker, **outbox drainer**, webhook (public via ngrok or a real URL), console. |
+
+### Railway outbox drainer
+
+Add a second Railway service on this repo with start command
+`python -m workers.outbox_worker` and the same `SUPABASE_*` variables as
+the dispatch worker. The deployed demo agency stays `emr_backend=mock`,
+so write-backs complete without a lab FHIR server. Poll interval is
+`OUTBOX_POLL_SECONDS` (default 2).
 
 Compliance note: every vendor in this lane offers a BAA on its business or enterprise tier. Signing them, and keeping PHI out of logs you do not control, is your responsibility.
 
@@ -176,7 +190,7 @@ Compliance note: every vendor in this lane offers a BAA on its business or enter
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | your SIP provider's equivalents | required | required |
 | `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | trunk on your livekit-sip | cloud trunk id | cloud trunk id |
 | `TEXTBELT_KEY` / `PUBLIC_BASE_URL` / `TWILIO_WHATSAPP_FROM` | only if you accept messaging egress | paid TextBelt key + ngrok URL | same as config 2 |
-| `WORKER_POLL_SECONDS` / `SMS_WEBHOOK_PORT` | defaults `2` / `8787` everywhere | same | same |
+| `WORKER_POLL_SECONDS` / `OUTBOX_POLL_SECONDS` / `SMS_WEBHOOK_PORT` | defaults `2` / `2` / `8787` | same | same |
 
 Planned-but-not-implemented (listed so nobody hunts for them): Ollama, speaches, and Kokoro endpoint variables for `gemma_phi`. They do not exist in `shared/config.py` yet and will arrive with the engine adapter.
 

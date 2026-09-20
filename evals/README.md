@@ -174,6 +174,8 @@ blocking a merge. On a hosted server, the run buttons need the
   noon (quiet hours would otherwise park voice work instead of escalating).
 - `evals/.env.eval` (credentials) and `evals/artifacts/` (per-run evidence)
   stay out of git; baselines are only committed on an explicit ask.
+- EMR contract tests (`test_emr_contract.py`) default to `mock,hapi`.
+  Medplum/OpenEMR lanes are opt-in via `EMR_TEST_BACKENDS`.
 
 ## Deeper docs
 

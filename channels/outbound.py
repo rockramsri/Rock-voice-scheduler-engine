@@ -1,8 +1,7 @@
 """Outbound calls — dispatch the agent into a room, then dial out via SIP.
 
-Agent-first ordering so the callee never answers into an empty room. Phase 3
-moves call placement behind pgmq workers and adds retry/answer tracking; the
-function shape stays the same.
+Agent-first ordering so the callee never answers into an empty room. Retry
+and answer tracking can wrap this function later; the shape stays the same.
 """
 
 from __future__ import annotations

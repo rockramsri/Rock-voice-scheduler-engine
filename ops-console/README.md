@@ -43,7 +43,7 @@ data/       schema.sql, dashboard.sql, db.py (ALL Postgres access, guarded up
 dashboard/  Vite+React ops UI (independent; talks only to Supabase)
 ```
 
-## Data model (6 tables; the shifts table IS the queue — no pgmq)
+## Data model (6 tables; the shifts table IS the queue)
 
 - `agencies` (quiet hours 6–22, urgent<5h/relaxed≥24h thresholds, tz) · `nurses` (phone UNIQUE = caller-ID key, specialties/areas arrays, `preferences.channels` obeyed by ladder, avatar_url) · `patients` · `shifts` (status machine: scheduled→callout→offers_out→filled/escalated; callout_* fields; `rung`, `next_action_at` = worker poll target; `claimed_by/at` stale >3min reclaimable; **EXCLUDE gist constraint = double-booking impossible**) · `offers` (UNIQUE(shift,nurse); state scored→messaged→calling→accepted/declined/no_answer; per-offer `rung` tick BEFORE send = no duplicate outreach) · `events` (append-only audit; status-change trigger writes it + pg_notify).
 - SQL functions: `claim_shifts(worker, limit)` (SKIP LOCKED), `lock_shift(shift, nurse)` (atomic first-YES-wins), `ff_shifts()` (demo fast-forward; the ONLY anon mutation on shifts).

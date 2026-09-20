@@ -21,13 +21,13 @@ Six domain tables plus one console table, plus `webhook_receipts` for inbound id
 - **`nurses`, `patients`, `agencies` are world state.** Agencies carry quiet hours and ladder thresholds as *data*, not code, so per-agency policy needs no deploy.
 - **`workflows` is console roster cards.** Which nurse profiles a demo or ops scenario groups together. The engine never reads it.
 
-There is no queue table, no jobs table, no sessions table, no outbox. Their responsibilities all collapsed into columns on `shifts` and `offers`.
+There is no jobs table and no sessions table. Scheduling work lives on `shifts` and `offers`. EHR write-backs are the exception: they ride a dedicated `outbox` (ids only) so the accept/callout hot path never waits on a vendor.
 
 ## The shifts table IS the queue
 
 A callout sets `status='callout', next_action_at=now()`. Workers poll the partial index over `(next_action_at) WHERE status IN ('callout','offers_out')` and claim rows via `claim_shifts()` — an UPDATE wrapped around `SELECT ... FOR UPDATE SKIP LOCKED`. Claims go stale after 3 minutes, so a crashed worker's shifts are automatically fair game.
 
-Why not pgmq or a broker? One sequential-ish flow per callout does not need one. The row itself is the job, the checkpoint, and the schedule: a worker does a short burst, writes `rung` and `next_action_at`, and releases. **Waits are timestamps on the row, never sleeping workers.** Any worker resumes any shift after any crash, and workers scale horizontally with zero coordination because SKIP LOCKED partitions the work for free.
+Why not a separate job broker? One sequential-ish flow per callout does not need one. The row itself is the job, the checkpoint, and the schedule: a worker does a short burst, writes `rung` and `next_action_at`, and releases. **Waits are timestamps on the row, never sleeping workers.** Any worker resumes any shift after any crash, and workers scale horizontally with zero coordination because SKIP LOCKED partitions the work for free.
 
 ## Safety lives in the database
 
@@ -87,3 +87,9 @@ The OfferAgent is **scope-locked by construction**: built per call as a closure 
 ## Engine-agnostic by construction
 
 `voice/session_factory.py` is the only module that knows engine names. Swapping OpenAI Realtime for the cascade — or eventually for the self-hosted `gemma_phi` profile — changes one env var. The agents, tools, worker, and schema do not change, which is what makes the three [deployment topologies](deployment.md) configuration rather than forks.
+
+## Why an EHR outbox (and not a vendor SDK)
+
+The accept and callout paths must stay database-only. A Twilio timeout must never block `lock_shift`. So every EHR side effect is an `outbox` row inserted in the same transaction as the state change, carrying ids only. A separate drainer (`python -m workers.outbox_worker`) reads fresh rows, writes FHIR (or a stub), and emits `emr_writeback` events the console already understands.
+
+Vendor differences live in `workplane/emr/profiles.py`. AxisCare and WellSky are registered stubs: misconfiguration dead-letters instead of hanging. Secrets stay in env vars; the database stores only the variable's name. Sync-in never overwrites Rock-owned phones. See [emr-architecture](emr-architecture.md).
