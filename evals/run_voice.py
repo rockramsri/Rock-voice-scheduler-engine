@@ -240,6 +240,9 @@ async def run_once(scenario, run_idx: int) -> dict:
         await _after_call(offer["shift_id"], agency)
         import asyncio
         await asyncio.sleep(1.0)
+        # Ship this run's queued EHR write-backs so the snapshot sees them.
+        from workers.outbox_worker import drain_outbox_once
+        await drain_outbox_once(agency_id=run.agency_id)
 
         artifacts = RunArtifacts(
             scenario_id=scenario.scenario_id, run_idx=run_idx,

@@ -15,7 +15,6 @@ import logging
 from data import db
 from shared.phone import is_fake
 from shared.spoken import spoken_when
-from workplane import emr
 
 log = logging.getLogger("workplane.offers")
 
@@ -27,8 +26,13 @@ _background: set[asyncio.Task] = set()
 
 
 async def accept_offer(offer: dict) -> bool:
-    """First YES wins. Returns False when someone else already got the shift."""
-    won = await db.lock_shift(offer["shift_id"], offer["nurse_id"])
+    """First YES wins. Returns False when someone else already got the shift.
+
+    The lock and the EHR write-back intent land in ONE transaction
+    (lock_shift_with_outbox, data/emr.sql); the outbox drainer does the
+    actual EHR write later, so the winning YES never awaits a network call.
+    """
+    won = await db.lock_shift_with_outbox(offer["shift_id"], offer["nurse_id"])
     if won:
         if not await db.set_offer_state(offer["id"], "accepted", RESPONDABLE):
             await db.set_offer_state(offer["id"], "accepted", REPAIR_FROM)
@@ -37,10 +41,6 @@ async def accept_offer(offer: dict) -> bool:
                                payload={"offer_id": offer["id"]})
             log.warning("offer %s state_repair to accepted after won lock", offer["id"])
         log.info("offer %s ACCEPTED - shift %s filled", offer["id"], offer["shift_id"])
-        shift = offer.get("shifts") or {"id": offer["shift_id"]}
-        await emr.post_chart_event(
-            "shift_reassigned", shift, nurse_id=offer["nurse_id"],
-            details={"assigned_nurse": (offer.get("nurses") or {}).get("name", "")})
         task = asyncio.create_task(stand_down_losers(offer["shift_id"], offer["id"]))
         _background.add(task)
         task.add_done_callback(_background.discard)

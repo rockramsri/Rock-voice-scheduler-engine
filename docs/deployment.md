@@ -9,10 +9,11 @@ One idea makes all three configs possible: `voice/session_factory.py` is the onl
 | Piece | Command | Notes |
 | --- | --- | --- |
 | Dispatch worker | `python -m workers.dispatch_worker` | Polls Postgres every `WORKER_POLL_SECONDS` (default 2). Stateless between bursts. |
+| Outbox drainer | `python -m workers.outbox_worker` | Ships queued EHR write-backs (`outbox` table) every `OUTBOX_POLL_SECONDS` (default 2); retries with backoff, dead-letters after `OUTBOX_MAX_ATTEMPTS` (default 8). |
 | Voice worker | `python -m voice.entry dev` (or `start` in production) | Registers as `AGENT_NAME` with LiveKit; serves FrontDesk and OfferAgent. |
 | SMS webhook | `python -m channels.cli serve` | aiohttp server on `SMS_WEBHOOK_PORT` (default 8787). Needs a public URL for replies. |
 | Ops console | `cd ops-console && npm run dev` | Talks only to Supabase with the anon key. `http://localhost:8080` in dev. |
-| Schema | `psql "$DB_URL" -f data/schema.sql` then `-f data/dashboard.sql` | Apply once per database. |
+| Schema | `psql "$DB_URL" -f data/schema.sql` then `-f data/dashboard.sql` then `-f data/emr.sql` | Apply once per database. Migration note: `data/emr.sql` (EMR outbox + links + agency EMR config) was applied to both the production and eval Supabase projects on 2026-09-20; new databases apply all three files in that order. |
 
 ## Config 1 — Fully self-hosted, dockerized
 

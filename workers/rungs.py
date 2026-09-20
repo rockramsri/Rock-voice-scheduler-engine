@@ -231,6 +231,10 @@ async def escalate(shift: dict, reason: str, agency: dict | None = None) -> None
     await db.mark_escalated(shift["id"], state="paged",
                             next_action_at=(now() + timedelta(minutes=ack_min)).isoformat(),
                             pages=0)
+    # Chart the escalation too (ids only; the reason stays in Rock's events).
+    await db.enqueue_emr(shift.get("agency_id") or agency["id"], "escalated",
+                         shift["id"], None, shift.get("patient_id"),
+                         f"escalated:{shift['id']}:{now().strftime('%Y%m%d%H%M%S')}")
 
 
 async def repage_oncall(shift: dict, agency: dict) -> None:

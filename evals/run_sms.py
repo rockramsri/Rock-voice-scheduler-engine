@@ -158,6 +158,10 @@ async def run_once(scenario: Scenario, run_idx: int) -> dict:
             inbound = reply
 
         await asyncio.sleep(1.0)                 # let stand-down background tasks land
+        # Ship this run's queued EHR write-backs so the snapshot sees them
+        # (deterministic in-process drain; no background worker in evals).
+        from workers.outbox_worker import drain_outbox_once
+        await drain_outbox_once(agency_id=run.agency_id)
 
         artifacts = RunArtifacts(
             scenario_id=scenario.scenario_id, run_idx=run_idx,

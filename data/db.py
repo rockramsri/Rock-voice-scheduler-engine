@@ -412,6 +412,104 @@ async def release_shift(shift_id: str, *, status: str, rung: int | None = None,
                .eq("id", shift_id).in_("status", ["callout", "offers_out"]).execute())
 
 
+# ---- EMR outbox (data/emr.sql; drained by workers/outbox_worker.py) ----
+# The rule everywhere below: the state change and its outbox row are one
+# transaction (the *_with_outbox RPCs), payloads carry ids only, and every
+# complete/fail is a guarded UPDATE on claimed_by so a stale ex-claimer
+# can never finish a row another drainer rescued.
+
+async def record_callout_with_outbox(shift_id: str, nurse_id: str, reason: str) -> bool:
+    """record_callout + the EHR write-back intent, one transaction."""
+    result = await _run(lambda: client().rpc("record_callout_with_outbox", {
+        "p_shift": shift_id, "p_nurse": nurse_id, "p_reason": reason}).execute())
+    return bool(result.data)
+
+
+async def lock_shift_with_outbox(shift_id: str, nurse_id: str) -> bool:
+    """lock_shift + the EHR write-back intent, one transaction. Guard unchanged."""
+    result = await _run(lambda: client().rpc("lock_shift_with_outbox", {
+        "p_shift": shift_id, "p_nurse": nurse_id}).execute())
+    return bool(result.data)
+
+
+async def enqueue_emr(agency_id: str, kind: str, shift_id: str | None,
+                      nurse_id: str | None, patient_id: str | None, key: str) -> None:
+    """Queue one EHR write. A duplicate key means already queued — same success."""
+    await _run(lambda: client().rpc("enqueue_emr", {
+        "p_agency": agency_id, "p_kind": kind, "p_shift": shift_id,
+        "p_nurse": nurse_id, "p_patient": patient_id, "p_key": key}).execute())
+
+
+async def claim_outbox(worker: str, limit: int = 10,
+                       agency_id: str | None = None) -> list[dict]:
+    """Due, unheld outbox rows (SKIP LOCKED). agency_id narrows for eval isolation."""
+    params: dict[str, Any] = {"p_worker": worker, "p_limit": limit}
+    if agency_id:
+        params["p_agency"] = agency_id
+    result = await _run(lambda: client().rpc("claim_outbox", params).execute())
+    return result.data or []
+
+
+async def complete_outbox(row_id: int, worker: str, attempts: int) -> bool:
+    result = await _run(lambda: client().table("outbox").update({
+        "done_at": "now()", "attempts": attempts, "last_error": None,
+    }).eq("id", row_id).eq("claimed_by", worker).is_("done_at", "null").execute())
+    return bool(result.data)
+
+
+async def fail_outbox(row_id: int, worker: str, attempts: int, error: str,
+                      next_attempt_at: str | None, dead: bool = False) -> bool:
+    """Park the row for retry (next_attempt_at) or give up for good (dead)."""
+    if not config.LOG_MESSAGE_CONTENT:
+        error = redact.scrub_text(error)
+    fields: dict[str, Any] = {"attempts": attempts, "last_error": error[:200],
+                              "claimed_by": None, "claimed_at": None}
+    if dead:
+        fields["dead_at"] = "now()"
+    else:
+        fields["next_attempt_at"] = next_attempt_at
+    result = await _run(lambda: client().table("outbox").update(fields)
+                        .eq("id", row_id).eq("claimed_by", worker)
+                        .is_("done_at", "null").execute())
+    return bool(result.data)
+
+
+async def upsert_emr_link(agency_id: str, rock_kind: str, rock_id: str,
+                          external_type: str, external_id: str, backend: str) -> None:
+    """Remember Rock id <-> external id; replays refresh, never duplicate (PK)."""
+    await _run(lambda: client().table("emr_links").upsert({
+        "agency_id": agency_id, "rock_kind": rock_kind, "rock_id": rock_id,
+        "external_type": external_type, "external_id": external_id,
+        "backend": backend, "updated_at": "now()",
+    }, on_conflict="agency_id,rock_kind,rock_id,external_type").execute())
+
+
+async def emr_links_for(agency_id: str, rock_ids: list[str]) -> list[dict]:
+    if not rock_ids:
+        return []
+    result = await _run(lambda: client().table("emr_links").select("*")
+                        .eq("agency_id", agency_id).in_("rock_id", rock_ids).execute())
+    return result.data or []
+
+
+async def agency_by_id(agency_id: str) -> dict | None:
+    result = await _run(lambda: client().table("agencies").select("*")
+                        .eq("id", agency_id).limit(1).execute())
+    return result.data[0] if result.data else None
+
+
+async def nurse_by_id(nurse_id: str) -> dict | None:
+    result = await _run(lambda: client().table("nurses").select("*")
+                        .eq("id", nurse_id).limit(1).execute())
+    return result.data[0] if result.data else None
+
+
+async def patient_by_id(patient_id: str) -> dict | None:
+    result = await _run(lambda: client().table("patients").select("*")
+                        .eq("id", patient_id).limit(1).execute())
+    return result.data[0] if result.data else None
+
+
 # Free-text payload keys that may carry PHI (message bodies, callout reasons,
 # prospect names). Redacted when LOG_MESSAGE_CONTENT is off — see _safe_payload.
 _FREE_TEXT_KEYS = ("text", "reason", "prospects")

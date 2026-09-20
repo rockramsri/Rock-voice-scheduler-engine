@@ -71,6 +71,23 @@ SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 WORKER_POLL_SECONDS: float = float(os.getenv("WORKER_POLL_SECONDS", "2"))
 
+# --- EMR outbox (data/emr.sql; drained by workers/outbox_worker.py) ---
+OUTBOX_POLL_SECONDS: float = float(os.getenv("OUTBOX_POLL_SECONDS", "2"))
+OUTBOX_MAX_ATTEMPTS: int = int(os.getenv("OUTBOX_MAX_ATTEMPTS", "8"))
+# Oracle: a filled shift must show its emr_writeback within this many seconds.
+EMR_ORACLE_WINDOW_SECONDS: float = float(os.getenv("EMR_ORACLE_WINDOW_SECONDS", "30"))
+
+
+def env_secret(name: str | None) -> str | None:
+    """Resolve a secret by env-var NAME at call time (agencies.emr_secret_ref).
+
+    The database stores only the variable's NAME; the value lives in the
+    process environment and is read here, at drain time, never persisted.
+    """
+    if not name:
+        return None
+    return os.getenv(name) or None
+
 # --- Observability / PHI posture ---
 # Demo default (True) records verbatim SMS bodies + callout reasons in the
 # events table so the ops console can show them. Set False in production to

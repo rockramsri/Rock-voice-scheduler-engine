@@ -16,12 +16,17 @@ flag false to restore call-only gating. See docs/decisions.md.
 
 from __future__ import annotations
 
+import os
 from collections import Counter
 from datetime import datetime
 
 from evals.contracts import CheckResult, DbSnapshot, RunArtifacts, Scenario
 
 OUTREACH_KINDS = ("offer_sent", "offer_call")
+
+# A filled shift must show its EHR write-back inside this window. Read from
+# the env at import (no I/O at check time) so runners can tune it.
+EMR_WRITEBACK_WINDOW_SECONDS = float(os.getenv("EMR_ORACLE_WINDOW_SECONDS", "30"))
 
 ALLOWED_TOOLS = {
     "offer_agent": {"accept_this_shift", "decline_this_shift", "get_caller_context"},
@@ -369,10 +374,41 @@ def winner_not_stood_down(snap, scenario, artifacts) -> CheckResult:
                        evidence=f"winner {snap.slug(winner)} not stood down")
 
 
+def emr_writeback_complete(snap, scenario, artifacts) -> CheckResult:
+    """A filled shift must chart its reassignment promptly (the outbox drained).
+
+    The write-back is async now (outbox + drainer), so this check pins the
+    latency: an emr_writeback with action shift_reassigned must exist within
+    EMR_ORACLE_WINDOW_SECONDS of the transition to filled.
+    """
+    name = "emr_writeback_complete"
+    end = scenario.expected_end_state
+    if not end or end.status != "filled":
+        return CheckResult(name=name, status="skip",
+                           evidence="scenario does not expect a filled shift")
+    fills = [e for e in _events(snap, "shift_status_changed")
+             if (e.get("payload") or {}).get("to") == "filled"]
+    if not fills:
+        return CheckResult(name=name, status="fail", evidence="no transition to filled")
+    writebacks = [e for e in _events(snap, "emr_writeback")
+                  if (e.get("payload") or {}).get("action") == "shift_reassigned"]
+    if not writebacks:
+        return CheckResult(name=name, status="fail",
+                           evidence="no emr_writeback with action=shift_reassigned")
+    filled_at = _iso(fills[0]["at"])
+    delta = min(abs((_iso(e["at"]) - filled_at).total_seconds()) for e in writebacks)
+    if delta > EMR_WRITEBACK_WINDOW_SECONDS:
+        return CheckResult(name=name, status="fail", evidence=(
+            f"emr_writeback landed {delta:.0f}s from the fill "
+            f"(window {EMR_WRITEBACK_WINDOW_SECONDS:.0f}s)"))
+    return CheckResult(name=name, status="pass",
+                       evidence=f"write-back within {delta:.0f}s of the fill")
+
+
 ALL_CHECKS = (ranking_first_contact, quiet_hours, single_winner_lock, no_double_text,
               scope_two_tools, human_fallback, turn_budget_endstate,
               audit_completeness, no_context_bleed, winner_not_stood_down,
-              retry_no_duplicate)
+              retry_no_duplicate, emr_writeback_complete)
 
 
 def run_oracle(snap: DbSnapshot, scenario: Scenario,

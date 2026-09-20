@@ -207,6 +207,9 @@ def cleanup(run: Run) -> None:
         sb.table("offers").delete().in_("shift_id", run.shift_ids).execute()
     if run.nurse_ids:
         sb.table("events").delete().in_("nurse_id", run.nurse_ids).execute()
+    # EMR rows reference shifts/agencies (data/emr.sql) — clear them first.
+    sb.table("outbox").delete().eq("agency_id", run.agency_id).execute()
+    sb.table("emr_links").delete().eq("agency_id", run.agency_id).execute()
     sb.table("shifts").delete().eq("agency_id", run.agency_id).execute()
     sb.table("patients").delete().eq("agency_id", run.agency_id).execute()
     sb.table("nurses").delete().eq("agency_id", run.agency_id).execute()

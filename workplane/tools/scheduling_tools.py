@@ -18,7 +18,6 @@ from livekit.agents import function_tool
 
 from data import db
 from shared.spoken import spoken_when
-from workplane import emr
 
 log = logging.getLogger("workplane.tools")
 
@@ -119,12 +118,12 @@ def build_scheduling_tools(matches: list[dict]) -> list:
             listed = "; ".join(_describe(s) for s in upcoming)
             return (f"Which shift are you calling out from? You have: {listed}. "
                     "Say the day or the time.")
-        if not await db.record_callout(chosen["id"], nurse["id"], reason):
+        # One transaction: the guarded status flip AND the EHR write-back
+        # intent (outbox row). The drainer documents the callout later.
+        if not await db.record_callout_with_outbox(chosen["id"], nurse["id"], reason):
             return "That shift is already being handled."
         await db.log_event("frontdesk", "callout_recorded", shift_id=chosen["id"],
                            nurse_id=nurse["id"], payload={"reason": reason})
-        await emr.post_chart_event("callout_documented", chosen,
-                                   nurse_id=nurse["id"], details={"reason": reason})
         return (f"Callout recorded for your {_describe(chosen)}, {nurse['name']}. "
                 "Replacement outreach has already started — nothing else is "
                 "needed from you.")
