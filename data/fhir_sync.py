@@ -6,7 +6,7 @@ driver and the Medplum hook both land here. Rules:
   EHR wins  — name, active, specialties, language
   Rock wins — phone, preferences (never overwritten after the row exists)
   never delete — deactivate only
-  unknown ids — ignored here; the M6 import CLI creates new rows
+  unknown ids — ignored on incremental sync; import CLI passes create=True
 """
 
 from __future__ import annotations
@@ -42,21 +42,25 @@ def from_fhir(resource: dict) -> dict | None:
     return None
 
 
-async def apply(agency_id: str, change: dict) -> str | None:
+async def apply(agency_id: str, change: dict, *, create: bool = False,
+                import_phone: bool = False) -> str | None:
     """Apply one change. Returns the Rock id, or None if we skipped it."""
     kind = change.get("kind")
     if kind == "nurse":
-        return await db.upsert_nurse_from_emr(agency_id, change)
+        return await db.upsert_nurse_from_emr(
+            agency_id, change, create=create, import_phone=import_phone)
     if kind == "patient":
-        return await db.upsert_patient_from_emr(agency_id, change)
+        return await db.upsert_patient_from_emr(
+            agency_id, change, create=create, import_phone=import_phone)
     return None
 
 
-async def apply_resource(agency_id: str, resource: dict) -> str | None:
+async def apply_resource(agency_id: str, resource: dict, *, create: bool = False,
+                         import_phone: bool = False) -> str | None:
     change = from_fhir(resource)
     if not change:
         return None
-    return await apply(agency_id, change)
+    return await apply(agency_id, change, create=create, import_phone=import_phone)
 
 
 def _name(resource: dict) -> str | None:

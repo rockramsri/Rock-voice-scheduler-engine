@@ -5,13 +5,15 @@ HAPI is the CI target. Medplum is the M3 contract target when
 file for M5.
 
 ```
-docker compose -f lab/docker-compose.emr.yml up -d
+make lab-up
 python lab/probe_emr.py
-EMR_TEST_BACKENDS=mock,hapi,medplum python -m pytest \
-  evals/tests/test_emr_mapping.py evals/tests/test_outbox_backoff.py \
-  evals/tests/test_emr_contract.py
-docker compose -f lab/docker-compose.emr.yml down -v
+make lab-seed
+python -m data.import_fhir --agency <id> --patients
+make lab-down
 ```
+
+`lab/sample_bundle.json` is a tiny Practitioner+Patient collection. A
+full Synthea download POSTs the same way via `python lab/load_bundle.py`.
 
 Host ports: HAPI `8080`, Medplum `8103`/`3000`, OpenEMR `8300`/`9300`.
 Postgres and Redis stay unpublished.

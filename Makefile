@@ -1,7 +1,7 @@
 # Rock Scheduler eval harness. Everything runs through the repo venv.
 PY := .venv/bin/python
 
-.PHONY: test-l1 test-l2 test-oracle eval eval-one eval-server bench baseline-promote
+.PHONY: test-l1 test-l2 test-oracle eval eval-one eval-server bench baseline-promote lab-up lab-down lab-seed
 
 # API for the ops console's Evals pages (http://localhost:8321, eval DB only).
 eval-server:
@@ -25,6 +25,16 @@ eval:
 
 bench:
 	@echo "bench (cascade vs realtime) arrives with M7 — Scorecard.compare() is ready"
+
+lab-up:
+	docker compose -f lab/docker-compose.emr.yml up -d
+
+lab-down:
+	docker compose -f lab/docker-compose.emr.yml down
+
+lab-seed:
+	$(PY) lab/load_bundle.py lab/sample_bundle.json
+	$(PY) -m data.seed --lab
 
 baseline-promote:
 	$(PY) -c "from evals.scorecard import promote, ARTIFACTS_DIR; \

@@ -1,0 +1,23 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "lab-import-nurse",
+        "active": true,
+        "name": [{"text": "Imported Nurse", "family": "Nurse", "given": ["Imported"]}],
+        "telecom": [{"system": "phone", "value": "201-555-0199"}]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "lab-import-patient",
+        "active": true,
+        "name": [{"text": "Imported Patient", "family": "Patient", "given": ["Imported"]}]
+      }
+    }
+  ]
+}

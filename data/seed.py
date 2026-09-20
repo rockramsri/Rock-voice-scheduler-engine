@@ -1,6 +1,7 @@
 """Seed the Rock-Scheduler database: agency, fake roster, demo shifts.
 
   python -m data.seed                      idempotent (safe to re-run)
+  python -m data.seed --lab                lab agencies A (Medplum) and B (OpenEMR)
   python -m data.seed --me +19295550123    put YOUR phone on James Okafor so
                                            outreach texts/calls reach you
 
@@ -38,7 +39,44 @@ PATIENTS = [
 ]
 
 
-def main(me: str | None) -> None:
+LAB_AGENCIES = (
+    {
+        "name": "Rockram Home Health Care A",
+        "emr_backend": "medplum", "emr_profile": "medplum",
+        "emr_base_url": "http://localhost:8103/fhir/R4",
+        "emr_auth_kind": "client_credentials", "emr_sync_mode": "push",
+        "emr_send_patient_name": True, "emr_send_address": True,
+    },
+    {
+        "name": "Rockram Home Health Care B",
+        "emr_backend": "openemr", "emr_profile": "openemr",
+        "emr_base_url": "https://localhost:9300/apis/default/fhir",
+        "emr_auth_kind": "oauth2_password", "emr_sync_mode": "pull",
+        "emr_send_patient_name": True, "emr_send_address": True,
+    },
+)
+
+
+def seed_lab() -> None:
+    """Create/update the two lab agencies. Roster comes from import_fhir."""
+    sb = client()
+    for spec in LAB_AGENCIES:
+        spec = dict(spec)
+        name = spec.pop("name")
+        rows = sb.table("agencies").select("*").eq("name", name).execute().data
+        if rows:
+            sb.table("agencies").update(spec).eq("id", rows[0]["id"]).execute()
+            print(f"lab agency: {name} ({rows[0]['id'][:8]}) updated")
+        else:
+            row = sb.table("agencies").insert({"name": name, **spec}).execute().data[0]
+            print(f"lab agency: {name} ({row['id'][:8]}) created")
+    print("next: python -m data.import_fhir --agency <id> --patients")
+
+
+def main(me: str | None, lab: bool = False) -> None:
+    if lab:
+        seed_lab()
+        return
     sb = client()
 
     agencies = sb.table("agencies").select("*").eq("name", "Rockram Home Health Care").execute().data
@@ -96,4 +134,7 @@ def main(me: str | None) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--me", help="your real phone in E.164; goes on James Okafor")
-    main(parser.parse_args().me)
+    parser.add_argument("--lab", action="store_true",
+                        help="create/update Medplum + OpenEMR lab agencies")
+    args = parser.parse_args()
+    main(args.me, lab=args.lab)

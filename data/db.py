@@ -515,13 +515,36 @@ async def emr_link_by_external(agency_id: str, external_type: str,
     return result.data[0] if result.data else None
 
 
-async def upsert_nurse_from_emr(agency_id: str, change: dict) -> str | None:
+def _fake_555(external_id: str) -> str:
+    digits = "".join(c for c in str(external_id) if c.isdigit()) or "0000"
+    return f"555-{digits[-4:]:0>4}"
+
+
+async def upsert_nurse_from_emr(agency_id: str, change: dict, *,
+                                create: bool = False,
+                                import_phone: bool = False) -> str | None:
     """EHR wins name/active/specialties. Phone and preferences stay Rock's."""
-    link = await emr_link_by_external(
-        agency_id, change.get("external_type") or "Practitioner",
-        change["external_id"])
+    rtype = change.get("external_type") or "Practitioner"
+    link = await emr_link_by_external(agency_id, rtype, change["external_id"])
     if not link:
-        return None  # M6 import creates; incremental sync only updates links
+        if not create:
+            return None
+        phone = (change.get("phone") if import_phone and change.get("phone")
+                 else _fake_555(change["external_id"]))
+        agency = await agency_by_id(agency_id)
+        inserted = await _run(lambda: client().table("nurses").insert({
+            "agency_id": agency_id,
+            "name": change.get("name") or "Imported Nurse",
+            "phone": phone,
+            "specialties": change.get("specialties") or [],
+            "active": bool(change.get("active", True)),
+            "source": "emr",
+        }).execute())
+        rock_id = inserted.data[0]["id"]
+        await upsert_emr_link(agency_id, "nurse", rock_id, rtype,
+                              str(change["external_id"]),
+                              (agency or {}).get("emr_backend") or "fhir")
+        return rock_id
     fields: dict[str, Any] = {}
     if change.get("name"):
         fields["name"] = change["name"]
@@ -535,13 +558,30 @@ async def upsert_nurse_from_emr(agency_id: str, change: dict) -> str | None:
     return link["rock_id"]
 
 
-async def upsert_patient_from_emr(agency_id: str, change: dict) -> str | None:
+async def upsert_patient_from_emr(agency_id: str, change: dict, *,
+                                  create: bool = False,
+                                  import_phone: bool = False) -> str | None:
     """EHR wins name/language. Phone stays Rock's. Patients have no active flag."""
-    link = await emr_link_by_external(
-        agency_id, change.get("external_type") or "Patient",
-        change["external_id"])
+    rtype = change.get("external_type") or "Patient"
+    link = await emr_link_by_external(agency_id, rtype, change["external_id"])
     if not link:
-        return None
+        if not create:
+            return None
+        agency = await agency_by_id(agency_id)
+        inserted = await _run(lambda: client().table("patients").insert({
+            "agency_id": agency_id,
+            "name": change.get("name") or "Imported Patient",
+            "area": "Unknown",
+            "language": change.get("language") or "en",
+            "phone": (change.get("phone") if import_phone and change.get("phone")
+                      else ""),
+            "source": "emr",
+        }).execute())
+        rock_id = inserted.data[0]["id"]
+        await upsert_emr_link(agency_id, "patient", rock_id, rtype,
+                              str(change["external_id"]),
+                              (agency or {}).get("emr_backend") or "fhir")
+        return rock_id
     fields: dict[str, Any] = {}
     if change.get("name"):
         fields["name"] = change["name"]
