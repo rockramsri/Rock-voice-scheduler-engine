@@ -20,7 +20,7 @@ import time
 from aiohttp import web
 
 from channels import sms
-from data import db
+from data import db, fhir_sync
 from shared import config
 from shared.spoken import spoken_when
 from workplane.agents.sms_agent import reply_to_sms
@@ -236,17 +236,65 @@ async def handle_health(_: web.Request) -> web.Response:
     return web.json_response({"ok": True, "service": "rock-sms-webhook"})
 
 
+def medplum_signature_hex(raw_body: bytes, secret: str) -> str:
+    """HMAC-SHA256 hex of the raw POST body — Medplum's rest-hook contract."""
+    return hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+
+
+def _medplum_signature_ok(request: web.Request, raw_body: bytes) -> bool:
+    secret = config.MEDPLUM_HOOK_SECRET
+    if not secret:
+        if not _insecure_dev_ok():
+            log.warning("rejecting Medplum hook: MEDPLUM_HOOK_SECRET empty")
+            return False
+        return True
+    got = request.headers.get("X-Signature", "")
+    expected = medplum_signature_hex(raw_body, secret)
+    return bool(got) and hmac.compare_digest(got, expected)
+
+
+async def handle_medplum_hook(request: web.Request) -> web.Response:
+    """Subscription rest-hook. Verify, de-dupe, apply identity upsert, 200."""
+    raw = await request.read()
+    if not _medplum_signature_ok(request, raw):
+        log.warning("rejected Medplum hook with bad signature")
+        return web.Response(status=403, text="forbidden")
+    try:
+        body = json.loads(raw.decode() or "{}")
+    except Exception:
+        return web.Response(status=400, text="bad json")
+    if not isinstance(body, dict):
+        return web.Response(status=400, text="bad json")
+
+    rid = str(body.get("id") or "")
+    vid = str((body.get("meta") or {}).get("versionId") or "none")
+    receipt = f"{rid}:{vid}" if rid else ""
+    if receipt and not await db.record_webhook_receipt("medplum", receipt):
+        return web.json_response({"ok": True, "duplicate": True})
+
+    interaction = (request.headers.get("X-Medplum-Interaction") or "update").lower()
+    agency_id = request.query.get("agency")
+    if interaction == "delete" or not body.get("resourceType"):
+        return web.json_response({"ok": True, "ignored": "delete"})
+    if not agency_id:
+        return web.json_response({"ok": True, "ignored": "no agency"})
+    await fhir_sync.apply_resource(agency_id, body)
+    return web.json_response({"ok": True})
+
+
 def build_app() -> web.Application:
     app = web.Application()
     app.router.add_post("/sms", handle_sms)
     app.router.add_post("/textbelt-reply", handle_textbelt_reply)
+    app.router.add_post("/emr/medplum/hook", handle_medplum_hook)
     app.router.add_get("/health", handle_health)
     return app
 
 
 def serve() -> None:
     """Blocking: run the webhook server on SMS_WEBHOOK_PORT."""
-    log.info("SMS webhook on http://localhost:%d (/textbelt-reply, /sms, /health)",
+    log.info("SMS webhook on http://localhost:%d "
+             "(/textbelt-reply, /sms, /emr/medplum/hook, /health)",
              config.SMS_WEBHOOK_PORT)
     if config.WEBHOOK_INSECURE_DEV:
         log.warning("WEBHOOK_INSECURE_DEV is ON — unsigned POSTs are accepted. "

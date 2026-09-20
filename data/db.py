@@ -492,10 +492,88 @@ async def emr_links_for(agency_id: str, rock_ids: list[str]) -> list[dict]:
     return result.data or []
 
 
+async def emr_links_of_types(agency_id: str, types: tuple[str, ...]) -> list[dict]:
+    result = await _run(lambda: client().table("emr_links").select("*")
+                        .eq("agency_id", agency_id)
+                        .in_("external_type", list(types)).execute())
+    return result.data or []
+
+
 async def agency_by_id(agency_id: str) -> dict | None:
     result = await _run(lambda: client().table("agencies").select("*")
                         .eq("id", agency_id).limit(1).execute())
     return result.data[0] if result.data else None
+
+
+async def emr_link_by_external(agency_id: str, external_type: str,
+                               external_id: str) -> dict | None:
+    result = await _run(lambda: client().table("emr_links").select("*")
+                        .eq("agency_id", agency_id)
+                        .eq("external_type", external_type)
+                        .eq("external_id", str(external_id))
+                        .limit(1).execute())
+    return result.data[0] if result.data else None
+
+
+async def upsert_nurse_from_emr(agency_id: str, change: dict) -> str | None:
+    """EHR wins name/active/specialties. Phone and preferences stay Rock's."""
+    link = await emr_link_by_external(
+        agency_id, change.get("external_type") or "Practitioner",
+        change["external_id"])
+    if not link:
+        return None  # M6 import creates; incremental sync only updates links
+    fields: dict[str, Any] = {}
+    if change.get("name"):
+        fields["name"] = change["name"]
+    if "active" in change:
+        fields["active"] = bool(change["active"])
+    if change.get("specialties") is not None:
+        fields["specialties"] = change["specialties"]
+    if fields:
+        await _run(lambda: client().table("nurses").update(fields)
+                   .eq("id", link["rock_id"]).eq("agency_id", agency_id).execute())
+    return link["rock_id"]
+
+
+async def upsert_patient_from_emr(agency_id: str, change: dict) -> str | None:
+    """EHR wins name/language. Phone stays Rock's. Patients have no active flag."""
+    link = await emr_link_by_external(
+        agency_id, change.get("external_type") or "Patient",
+        change["external_id"])
+    if not link:
+        return None
+    fields: dict[str, Any] = {}
+    if change.get("name"):
+        fields["name"] = change["name"]
+    if change.get("language"):
+        fields["language"] = change["language"]
+    if fields:
+        await _run(lambda: client().table("patients").update(fields)
+                   .eq("id", link["rock_id"]).eq("agency_id", agency_id).execute())
+    return link["rock_id"]
+
+
+async def mark_agency_synced(agency_id: str) -> None:
+    await _run(lambda: client().table("agencies")
+               .update({"emr_last_sync_at": "now()"}).eq("id", agency_id).execute())
+
+
+async def agencies_due_for_pull() -> list[dict]:
+    """agencies.emr_sync_mode='pull' whose interval has elapsed (or never synced)."""
+    result = await _run(lambda: client().table("agencies").select("*")
+                        .eq("emr_sync_mode", "pull").execute())
+    now = datetime.now(UTC)
+    due: list[dict] = []
+    for row in result.data or []:
+        last = row.get("emr_last_sync_at")
+        wait = int(row.get("emr_sync_interval_seconds") or 300)
+        if not last:
+            due.append(row)
+            continue
+        stamp = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+        if now - stamp >= timedelta(seconds=wait):
+            due.append(row)
+    return due
 
 
 async def nurse_by_id(nurse_id: str) -> dict | None:

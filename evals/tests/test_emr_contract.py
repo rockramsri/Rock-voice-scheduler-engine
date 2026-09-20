@@ -113,6 +113,36 @@ def _fhir_read(world, rtype: str, rid: str) -> dict:
     return _fhir_json(world, f"{rtype}/{rid}")
 
 
+def _fhir_put(world, resource: dict) -> dict:
+    rtype, rid = resource["resourceType"], resource["id"]
+    headers = {"Accept": "application/fhir+json",
+               "Content-Type": "application/fhir+json", **world.fhir_headers}
+    vid = (resource.get("meta") or {}).get("versionId")
+    if vid:
+        headers["If-Match"] = f'W/"{vid}"'
+    req = urllib.request.Request(
+        f"{world.fhir_base}/{rtype}/{rid}",
+        data=json.dumps(resource).encode(), method="PUT", headers=headers)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+async def _push_hook(world, resource: dict, *, secret: str) -> int:
+    from aiohttp.test_utils import TestClient, TestServer
+    from channels.webhook import build_app, medplum_signature_hex
+
+    raw = json.dumps(resource).encode()
+    app = build_app()
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            f"/emr/medplum/hook?agency={world.agency_id}",
+            data=raw,
+            headers={"X-Signature": medplum_signature_hex(raw, secret),
+                     "X-Medplum-Interaction": "update",
+                     "Content-Type": "application/fhir+json"})
+        return resp.status
+
+
 @pytest.fixture(params=list(config.EMR_TEST_BACKENDS))
 async def world(eval_db, request):
     backend = request.param
@@ -350,6 +380,57 @@ async def test_crash_resume(world):
     assert await drain_outbox_once(agency_id=world.agency_id) == 1
     assert _outbox(world)[0]["done_at"]
     assert len(_writeback_events(world)) == 1
+
+
+# ---- 8 sync-in: EHR wins name/active; Rock keeps phone + preferences ----
+
+async def test_sync_in(world, monkeypatch):
+    if not world.fhir_base:
+        pytest.skip("sync-in needs a FHIR server")
+    nid = world.uuid("CG-OUT")
+    await db.enqueue_emr(world.agency_id, "upsert_practitioner", None, nid, None,
+                         f"upsert_practitioner:{nid}:sync")
+    assert await drain_outbox_once(agency_id=world.agency_id) == 1
+    link = next(l for l in _links(world)
+                if l["external_type"] == "Practitioner" and l["rock_id"] == nid)
+
+    seed.client().table("nurses").update({
+        "phone": "555-0199", "preferences": {"notes": "keep-me"},
+    }).eq("id", nid).execute()
+
+    body = _fhir_read(world, "Practitioner", link["external_id"])
+    body["name"] = [{"text": "Renamed Nurse", "family": "Nurse", "given": ["Renamed"]}]
+    _fhir_put(world, body)
+
+    if world.backend == "medplum":
+        monkeypatch.setattr(config, "MEDPLUM_HOOK_SECRET", "eval-hook")
+        assert await _push_hook(world, _fhir_read(world, "Practitioner",
+                                                 link["external_id"]),
+                                secret="eval-hook") == 200
+    else:
+        from workers.outbox_worker import sync_pull_once
+        seed.client().table("agencies").update({"emr_sync_mode": "pull"}).eq(
+            "id", world.agency_id).execute()
+        await sync_pull_once(world.agency_id, since=None)
+
+    row = (seed.client().table("nurses").select("*").eq("id", nid).execute().data[0])
+    assert row["name"] == "Renamed Nurse"
+    assert row["phone"] == "555-0199"
+    assert (row.get("preferences") or {}).get("notes") == "keep-me"
+
+    body = _fhir_read(world, "Practitioner", link["external_id"])
+    body["active"] = False
+    _fhir_put(world, body)
+    if world.backend == "medplum":
+        assert await _push_hook(world, _fhir_read(world, "Practitioner",
+                                                 link["external_id"]),
+                                secret="eval-hook") == 200
+    else:
+        from workers.outbox_worker import sync_pull_once
+        await sync_pull_once(world.agency_id, since=None)
+
+    row = (seed.client().table("nurses").select("*").eq("id", nid).execute().data[0])
+    assert row["active"] is False
 
 
 # ---- 9 minimum necessary (FHIR bodies) ----

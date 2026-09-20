@@ -19,7 +19,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from data import db
+from data import db, fhir_sync
 from shared import config
 from workplane.emr.base import EmrJob, EmrContext, EmrPermanentError, EmrTransientError
 from workplane.emr.registry import build_client
@@ -137,6 +137,52 @@ async def _process(row: dict, worker: str) -> None:
              client.backend, attempts)
 
 
+def _empty_ctx(agency: dict) -> EmrContext:
+    return EmrContext(agency=agency, shift=None, nurse=None, patient=None,
+                      links={}, secret=config.env_secret(agency.get("emr_secret_ref")))
+
+
+_SINCE_UNSET = object()
+
+
+async def sync_pull_once(agency_id: str, *, since: str | None | object = _SINCE_UNSET) -> int:
+    """Pull Practitioner/Patient updates for one agency. Linked rows only."""
+    agency = await db.agency_by_id(agency_id)
+    if agency is None:
+        return 0
+    used_since = agency.get("emr_last_sync_at") if since is _SINCE_UNSET else since
+    client = build_client(agency)
+    ctx = _empty_ctx(agency)
+    reader = getattr(client, "read", None)
+    resources: list[dict] = []
+    if reader:
+        # Refresh rows we already linked — no shared-server pagination surprises.
+        for link in await db.emr_links_of_types(
+                agency_id, ("Practitioner", "Patient")):
+            row = await reader(link["external_type"], link["external_id"], ctx)
+            if row:
+                resources.append(row)
+    else:
+        resources = await client.pull_changes(used_since, ctx)
+    applied = 0
+    for resource in resources:
+        if await fhir_sync.apply_resource(agency_id, resource):
+            applied += 1
+    await db.mark_agency_synced(agency_id)
+    return applied
+
+
+async def tick_pull_sync() -> int:
+    """Live-loop helper: every agency whose pull interval is due."""
+    applied = 0
+    for agency in await db.agencies_due_for_pull():
+        try:
+            applied += await sync_pull_once(agency["id"])
+        except Exception:  # one agency must not stop the others
+            log.exception("pull-sync failed for agency %s", agency.get("id"))
+    return applied
+
+
 async def drain_outbox_once(agency_id: str | None = None, worker: str | None = None,
                             limit: int = 10) -> int:
     """Claim-and-process until nothing is due. Returns rows processed.
@@ -165,6 +211,7 @@ async def run() -> None:
     while True:
         try:
             n = await drain_outbox_once(worker=worker_id)
+            await tick_pull_sync()
         except Exception:  # a transient claim error must not kill the loop
             log.exception("outbox poll failed; backing off 5s")
             await asyncio.sleep(5)

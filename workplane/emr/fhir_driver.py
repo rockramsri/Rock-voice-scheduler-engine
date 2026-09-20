@@ -9,7 +9,7 @@ mid-job resumes as no-ops.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 from urllib.parse import quote
 
@@ -74,8 +74,39 @@ class FhirDriver:
             raise EmrTransientError(f"metadata {status}")
         return {"fhirVersion": data.get("fhirVersion"), "software": data.get("software")}
 
+    async def read(self, rtype: str, rid: str, ctx: EmrContext) -> dict | None:
+        status, data, _ = await self._request(
+            "GET", f"{rtype}/{rid}", secret=ctx.secret)
+        if status == 404:
+            return None
+        if status >= 400:
+            self._raise(status, data)
+        return data
+
     async def pull_changes(self, since_iso: str | None, ctx: EmrContext) -> list[dict]:
-        return []  # M4
+        """Practitioner + Patient resources newer than `since` (raw FHIR)."""
+        out: list[dict] = []
+        for rtype in ("Practitioner", "Patient"):
+            path = f"{rtype}?_count=200"
+            if since_iso:
+                instant = mapping.fhir_instant(since_iso)
+                try:
+                    overlap = datetime.fromisoformat(
+                        instant.replace("Z", "+00:00")) - timedelta(seconds=5)
+                    instant = overlap.strftime("%Y-%m-%dT%H:%M:%SZ")
+                except ValueError:
+                    pass
+                path += f"&_lastUpdated=gt{quote(instant, safe='')}"
+            status, data, _ = await self._request("GET", path, secret=ctx.secret)
+            if status >= 500:
+                raise EmrTransientError(f"pull {rtype} {status}")
+            if status >= 400:
+                raise EmrPermanentError(f"pull {rtype} {status}: {_issue(data)}")
+            for entry in (data.get("entry") or []) if isinstance(data, dict) else []:
+                resource = entry.get("resource")
+                if resource:
+                    out.append(resource)
+        return out
 
     async def execute(self, job: EmrJob, ctx: EmrContext) -> EmrResult:
         handler = {

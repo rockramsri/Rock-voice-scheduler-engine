@@ -36,3 +36,8 @@ env var whose NAME is `agencies.emr_secret_ref`. Auth is
 
 Medplum's Provenance schema has no `identifier` field — the driver
 strips it and replays via `emr_links`, same as HAPI.
+
+Sync-in: set `agencies.emr_sync_mode` to `push` and point a Subscription
+at `POST /emr/medplum/hook?agency=<id>` with `MEDPLUM_HOOK_SECRET` in
+the subscription-secret extension. HAPI uses `pull` (`_lastUpdated` +
+refresh of linked Practitioner/Patient rows).
