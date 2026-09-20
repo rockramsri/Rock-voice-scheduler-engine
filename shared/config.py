@@ -82,6 +82,11 @@ MEDPLUM_BASE_URL: str = os.getenv("MEDPLUM_BASE_URL", "http://localhost:8103").r
 MEDPLUM_FHIR_URL: str = os.getenv("MEDPLUM_FHIR_URL", f"{MEDPLUM_BASE_URL}/fhir/R4").rstrip("/")
 # HMAC key for POST /emr/medplum/hook (Subscription extension secret).
 MEDPLUM_HOOK_SECRET: str = os.getenv("MEDPLUM_HOOK_SECRET", "")
+OPENEMR_BASE_URL: str = os.getenv("OPENEMR_BASE_URL", "https://localhost:9300").rstrip("/")
+OPENEMR_FHIR_URL: str = os.getenv(
+    "OPENEMR_FHIR_URL", f"{OPENEMR_BASE_URL}/apis/default/fhir").rstrip("/")
+OPENEMR_USERNAME: str = os.getenv("OPENEMR_USERNAME", "admin")
+OPENEMR_PASSWORD: str = os.getenv("OPENEMR_PASSWORD", "pass")
 EMR_TEST_BACKENDS: tuple[str, ...] = tuple(
     b.strip() for b in os.getenv("EMR_TEST_BACKENDS", "mock,hapi").split(",") if b.strip()
 )

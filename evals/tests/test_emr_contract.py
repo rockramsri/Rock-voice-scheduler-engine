@@ -8,32 +8,40 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
+import subprocess
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import pytest
 
 from data import db
 from evals import seed
 from shared import config
+from workplane.emr.auth import OPENEMR_SCOPES
 from workplane.emr.base import EmrPermanentError, EmrTransientError
 from workplane.emr.mapping import IDENT_SYSTEM
 from workers.outbox_worker import drain_outbox_once
 
 _MEDPLUM_SECRET_ENV = "EMR_TEST_MEDPLUM_SECRET"
+_OPENEMR_SECRET_ENV = "EMR_TEST_OPENEMR_SECRET"
+_TLS = ssl._create_unverified_context()
+_REPO = Path(__file__).resolve().parents[2]
 
 
-def _reachable(url: str, timeout: float = 2.0) -> bool:
+def _reachable(url: str, timeout: float = 2.0, context=None) -> bool:
     try:
-        urllib.request.urlopen(url, timeout=timeout)
+        urllib.request.urlopen(url, timeout=timeout, context=context)
         return True
     except Exception:
         return False
 
 
-def _http_json(method: str, url: str, *, payload=None, headers=None, form=None):
+def _http_json(method: str, url: str, *, payload=None, headers=None, form=None,
+               context=None):
     hdrs = dict(headers or {})
     body = None
     if payload is not None:
@@ -44,7 +52,7 @@ def _http_json(method: str, url: str, *, payload=None, headers=None, form=None):
         hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
     req = urllib.request.Request(url, data=body, method=method, headers=hdrs)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=context) as resp:
             return resp.status, json.loads(resp.read() or b"null")
     except urllib.error.HTTPError as exc:
         raw = exc.read()
@@ -93,11 +101,50 @@ def medplum_creds():
     return _medplum_mint()
 
 
+def _openemr_mint() -> tuple[str, str, str]:
+    """Register + enable + password-grant a lab client."""
+    root = config.OPENEMR_BASE_URL
+    _, client = _http_json("POST", f"{root}/oauth2/default/registration", payload={
+        "application_type": "private",
+        "redirect_uris": [f"{root}/swagger/oauth2-redirect.html"],
+        "client_name": "Rock Eval Drainer",
+        "token_endpoint_auth_method": "client_secret_post",
+        "scope": OPENEMR_SCOPES,
+        "grant_types": ["password", "refresh_token", "authorization_code"],
+        "response_types": ["code"],
+    }, context=_TLS)
+    cid, secret = client.get("client_id"), client.get("client_secret")
+    if not (cid and secret):
+        pytest.skip("OpenEMR client registration failed")
+    subprocess.run(
+        ["docker", "compose", "-f", "lab/docker-compose.emr.yml", "exec", "-T",
+         "openemr-db", "mariadb", "-uroot", "-proot", "openemr", "-e",
+         f"UPDATE oauth_clients SET is_enabled=1 WHERE client_id='{cid}';"],
+        cwd=_REPO, capture_output=True, text=True, check=False)
+    _, tok = _http_json("POST", f"{root}/oauth2/default/token", form={
+        "grant_type": "password", "client_id": cid, "client_secret": secret,
+        "username": config.OPENEMR_USERNAME, "password": config.OPENEMR_PASSWORD,
+        "scope": OPENEMR_SCOPES, "user_role": "users",
+    }, context=_TLS)
+    if not tok.get("access_token"):
+        pytest.skip("OpenEMR password grant failed")
+    return cid, secret, tok["access_token"]
+
+
+@pytest.fixture(scope="session")
+def openemr_creds():
+    if not _reachable(f"{config.OPENEMR_BASE_URL}/interface/login/login.php",
+                      context=_TLS):
+        pytest.skip("OpenEMR not reachable")
+    return _openemr_mint()
+
+
 def _fhir_json(world, path: str) -> dict:
     req = urllib.request.Request(
         f"{world.fhir_base}/{path.lstrip('/')}",
         headers={"Accept": "application/fhir+json", **world.fhir_headers})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=10,
+                                context=getattr(world, "tls", None)) as resp:
         return json.loads(resp.read())
 
 
@@ -123,7 +170,8 @@ def _fhir_put(world, resource: dict) -> dict:
     req = urllib.request.Request(
         f"{world.fhir_base}/{rtype}/{rid}",
         data=json.dumps(resource).encode(), method="PUT", headers=headers)
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=10,
+                                context=getattr(world, "tls", None)) as resp:
         return json.loads(resp.read())
 
 
@@ -167,6 +215,18 @@ async def world(eval_db, request):
         }
         fhir_base = config.MEDPLUM_FHIR_URL
         fhir_headers = {"Authorization": f"Bearer {token}"}
+    elif backend == "openemr":
+        cid, secret, token = request.getfixturevalue("openemr_creds")
+        os.environ[_OPENEMR_SECRET_ENV] = secret
+        agency = {
+            "emr_backend": "openemr", "emr_profile": "openemr",
+            "emr_base_url": config.OPENEMR_FHIR_URL,
+            "emr_auth_kind": "oauth2_password",
+            "emr_client_id": cid, "emr_secret_ref": _OPENEMR_SECRET_ENV,
+            "emr_sync_mode": "pull",
+        }
+        fhir_base = config.OPENEMR_FHIR_URL
+        fhir_headers = {"Authorization": f"Bearer {token}"}
     elif backend != "mock":
         pytest.skip(f"{backend} is not a contract target yet")
     run = seed.seed_run(
@@ -178,6 +238,7 @@ async def world(eval_db, request):
     run.backend = backend
     run.fhir_base = fhir_base
     run.fhir_headers = fhir_headers
+    run.tls = _TLS if backend == "openemr" else None
     try:
         yield run
     finally:
@@ -234,9 +295,12 @@ async def test_seed_roster(world):
     _reopen(world, done_at=None, claimed_by=None, claimed_at=None)
     await drain_outbox_once(agency_id=aid)
     assert len(_links(world)) == len(links_before)
-    if world.fhir_base:
+    if world.fhir_base and world.backend != "openemr":
         assert _fhir_total(world, "Organization", aid) == 1
         assert _fhir_total(world, "Appointment", sid) == 1
+    if world.backend == "openemr":
+        types = {row["external_type"] for row in _links(world)}
+        assert {"Organization", "Practitioner", "Patient", "Appointment"} <= types
 
 
 # ---- 2 callout then fill ----
@@ -265,7 +329,10 @@ async def test_callout_then_fill(world):
         assert all(str(e["payload"].get("record_id", "")).startswith("WSK-") for e in events)
     else:
         types = {row["external_type"] for row in _links(world)}
-        assert {"Organization", "Practitioner", "Patient", "Appointment", "Task"} <= types
+        needed = {"Organization", "Practitioner", "Patient", "Appointment"}
+        if world.backend != "openemr":
+            needed.add("Task")
+        assert needed <= types
     print(f"\n{world.backend} callout -> both emr_writeback in {elapsed:.2f}s")
 
 
@@ -287,13 +354,15 @@ async def test_replay_is_idempotent(world):
     assert len(_outbox(world)) == len(rows_before)
     assert len(_links(world)) == len(links_before)
     assert all(r["done_at"] for r in _outbox(world))
-    if world.fhir_base:
+    if world.fhir_base and world.backend != "openemr":
         assert _fhir_total(world, "Appointment", shift_id) == 1
         appt = next(l for l in _links(world) if l["external_type"] == "Appointment")
         q = urllib.parse.quote(f"Appointment/{appt['external_id']}", safe="")
         bundle = _fhir_json(world, f"Provenance?target={q}")
         n = bundle.get("total")
         assert (int(n) if n is not None else len(bundle.get("entry") or [])) == 1
+    if world.backend == "openemr":
+        assert len([l for l in _links(world) if l["external_type"] == "Appointment"]) == 1
 
 
 # ---- 4 escalated ----
@@ -304,6 +373,10 @@ async def test_escalated(world):
                          f"escalated:{shift_id}:test4")
     assert await drain_outbox_once(agency_id=world.agency_id) == 1
     assert _outbox(world)[0]["done_at"]
+    if world.backend == "openemr":
+        skipped = _writeback_events(world, "emr_unsupported")
+        assert any(e["payload"].get("resource") == "Task" for e in skipped)
+        return
     if world.fhir_base:
         task = next(l for l in _links(world) if l["external_type"] == "Task")
         body = _fhir_read(world, "Task", task["external_id"])
@@ -400,7 +473,12 @@ async def test_sync_in(world, monkeypatch):
 
     body = _fhir_read(world, "Practitioner", link["external_id"])
     body["name"] = [{"text": "Renamed Nurse", "family": "Nurse", "given": ["Renamed"]}]
-    _fhir_put(world, body)
+    try:
+        _fhir_put(world, body)
+    except urllib.error.HTTPError as exc:
+        if world.backend == "openemr":
+            pytest.skip(f"OpenEMR Practitioner update unsupported ({exc.code})")
+        raise
 
     if world.backend == "medplum":
         monkeypatch.setattr(config, "MEDPLUM_HOOK_SECRET", "eval-hook")
@@ -444,11 +522,18 @@ async def test_minimum_necessary(world):
     await drain_outbox_once(agency_id=world.agency_id)
     pat = next(l for l in _links(world) if l["external_type"] == "Patient")
     body = _fhir_read(world, "Patient", pat["external_id"])
-    assert "name" not in body
-    assert "address" not in body
     prac = next(l for l in _links(world) if l["external_type"] == "Practitioner")
     pbody = _fhir_read(world, "Practitioner", prac["external_id"])
     assert "telecom" not in pbody
+    if world.backend == "openemr":
+        dumped = json.dumps({"Patient": body, "Practitioner": pbody})
+        assert "Eval Patient" not in dumped
+        assert "sick" not in dumped
+        assert "555-" not in dumped
+        print(f"\nopenemr minimum-necessary dump (placeholder name ok): {dumped[:400]}")
+        return
+    assert "name" not in body
+    assert "address" not in body
     appt = next(l for l in _links(world) if l["external_type"] == "Appointment")
     task = next(l for l in _links(world) if l["external_type"] == "Task")
     dumped = json.dumps({

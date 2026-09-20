@@ -41,3 +41,12 @@ Sync-in: set `agencies.emr_sync_mode` to `push` and point a Subscription
 at `POST /emr/medplum/hook?agency=<id>` with `MEDPLUM_HOOK_SECRET` in
 the subscription-secret extension. HAPI uses `pull` (`_lastUpdated` +
 refresh of linked Practitioner/Patient rows).
+
+## OpenEMR (M5)
+
+Self-signed cert on `:9300`. Password grant is lab-only (`admin` / `pass`).
+Registered OAuth clients start disabled — `UPDATE oauth_clients SET
+is_enabled=1`. FHIR writes work for Organization / Practitioner /
+Patient only (official name + NPI required). Appointments go through
+`POST /apis/default/api/patient/{pid}/appointment`. Task and Provenance
+are skipped with an `emr_unsupported` event.

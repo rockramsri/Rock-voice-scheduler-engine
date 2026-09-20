@@ -37,8 +37,14 @@ def _token_url(fhir_base: str) -> str:
 
 
 def _id_from(data: Any, headers: dict) -> str | None:
-    if isinstance(data, dict) and data.get("id"):
-        return str(data["id"])
+    if isinstance(data, dict):
+        # OpenEMR create returns {id: numeric, uuid: fhir-id}. Prefer uuid.
+        if data.get("uuid"):
+            return str(data["uuid"])
+        if data.get("id"):
+            return str(data["id"])
+        if data.get("pid"):
+            return str(data["pid"])
     loc = headers.get("Location") or headers.get("location") or ""
     parts = loc.rstrip("/").split("/")
     if "_history" in parts:
@@ -53,6 +59,8 @@ def _issue(data: Any) -> str:
         text = details.get("text") if isinstance(details, dict) else None
         return str(text or first.get("diagnostics") or first.get("code") or "")[:160]
     if isinstance(data, dict):
+        if data.get("validationErrors"):
+            return str(data["validationErrors"])[:160]
         return str(data.get("message") or data.get("error") or "")[:160]
     return ""
 
@@ -65,8 +73,10 @@ class FhirDriver:
         if not self.base:
             raise EmrPermanentError("emr_base_url is empty")
         kind = agency.get("emr_auth_kind") or self.profile.default_auth_kind
-        self.auth = make_auth(kind, client_id=agency.get("emr_client_id"),
-                              token_url=_token_url(self.base))
+        self.auth = make_auth(
+            kind, client_id=agency.get("emr_client_id"),
+            token_url=self.profile.token_url(self.base),
+            verify_tls=self.profile.verify_tls)
 
     async def capabilities(self) -> dict:
         status, data, _ = await self._request("GET", "metadata", secret=None)
@@ -156,11 +166,14 @@ class FhirDriver:
         await self._update(ctx, "Appointment", appt,
                            lambda r: _mark_callout(r, ids.get("Practitioner")))
         task_key = f"{ctx.shift['id']}.{mapping.compact_ts(ctx.shift.get('callout_at'))}"
-        ids["Task"] = await self._ensure(
-            ctx, "Task", task_key,
-            mapping.task(task_key, status="requested",
-                         focus_ref=f"Appointment/{appt}"),
-            "shift", ctx.shift["id"])
+        if "Task" in self.profile.skip_types:
+            await self._skip(ctx, "Task")
+        else:
+            ids["Task"] = await self._ensure(
+                ctx, "Task", task_key,
+                mapping.task(task_key, status="requested",
+                             focus_ref=f"Appointment/{appt}"),
+                "shift", ctx.shift["id"])
         return ids
 
     async def _reassigned(self, job: EmrJob, ctx: EmrContext) -> dict:
@@ -177,28 +190,37 @@ class FhirDriver:
         await self._update(ctx, "Appointment", appt,
                            lambda r: _mark_filled(r, ids["Practitioner"]))
         task_key = f"{ctx.shift['id']}.{mapping.compact_ts(ctx.shift.get('callout_at'))}"
-        task_id = ctx.links.get(("shift", str(ctx.shift["id"]), "Task"))
-        if task_id:
-            await self._update(ctx, "Task", task_id, _mark_task_done)
+        if "Task" in self.profile.skip_types:
+            await self._skip(ctx, "Task")
         else:
-            task_id = await self._ensure(
-                ctx, "Task", task_key,
-                mapping.task(task_key, status="completed",
-                             focus_ref=f"Appointment/{appt}"),
+            task_id = ctx.links.get(("shift", str(ctx.shift["id"]), "Task"))
+            if task_id:
+                await self._update(ctx, "Task", task_id, _mark_task_done)
+            else:
+                task_id = await self._ensure(
+                    ctx, "Task", task_key,
+                    mapping.task(task_key, status="completed",
+                                 focus_ref=f"Appointment/{appt}"),
+                    "shift", ctx.shift["id"])
+            ids["Task"] = task_id
+        if "Provenance" in self.profile.skip_types:
+            await self._skip(ctx, "Provenance")
+        else:
+            recorded = str(ctx.shift.get("callout_at") or datetime.now(UTC).isoformat())
+            ids["Provenance"] = await self._ensure(
+                ctx, "Provenance", task_key,
+                mapping.provenance(task_key, target_ref=f"Appointment/{appt}",
+                                   recorded=recorded),
                 "shift", ctx.shift["id"])
-        ids["Task"] = task_id
-        recorded = str(ctx.shift.get("callout_at") or datetime.now(UTC).isoformat())
-        ids["Provenance"] = await self._ensure(
-            ctx, "Provenance", task_key,
-            mapping.provenance(task_key, target_ref=f"Appointment/{appt}",
-                               recorded=recorded),
-            "shift", ctx.shift["id"])
         return ids
 
     async def _escalated(self, job: EmrJob, ctx: EmrContext) -> dict:
         if not ctx.shift:
             raise EmrPermanentError("shift row missing")
         ids = {"Organization": await self._ensure_org(ctx)}
+        if "Task" in self.profile.skip_types:
+            await self._skip(ctx, "Task")
+            return ids
         task_id = ctx.links.get(("shift", str(ctx.shift["id"]), "Task"))
         if task_id:
             await self._update(ctx, "Task", task_id, _mark_task_hold)
@@ -244,12 +266,46 @@ class FhirDriver:
 
     async def _ensure_appt(self, ctx: EmrContext, patient_id: str | None,
                            pract_id: str | None) -> str:
+        if self.profile.rest_appointment:
+            return await self._ensure_rest_appt(ctx)
         pref = f"Patient/{patient_id}" if patient_id else None
         nref = f"Practitioner/{pract_id}" if pract_id else None
         return await self._ensure(
             ctx, "Appointment", ctx.shift["id"],
             mapping.appointment(ctx.shift, patient_ref=pref, practitioner_ref=nref),
             "shift", ctx.shift["id"])
+
+    async def _ensure_rest_appt(self, ctx: EmrContext) -> str:
+        existing = ctx.links.get(("shift", str(ctx.shift["id"]), "Appointment"))
+        if existing:
+            return existing
+        pid = None
+        if ctx.patient:
+            pid = ctx.links.get(("patient", str(ctx.patient["id"]), "PatientPid"))
+        if not pid:
+            raise EmrPermanentError("OpenEMR appointment needs a patient pid")
+        start = mapping.fhir_instant(ctx.shift.get("starts_at"))
+        end = mapping.fhir_instant(ctx.shift.get("ends_at"))
+        payload = {
+            "pc_catid": "5",
+            "pc_title": "Home Visit",
+            "pc_duration": "60",
+            "pc_hometext": "rock-shift",
+            "pc_apptstatus": "-",
+            "pc_eventDate": start[:10],
+            "pc_startTime": start[11:16],
+            "pc_endTime": end[11:16],
+            "pc_facility": "3",
+            "pc_billing_location": "3",
+        }
+        url = (f"{self.profile.rest_base(self.base)}/patient/{pid}/appointment")
+        status, data, _ = await self._request(
+            "POST", url, payload=payload, secret=ctx.secret, fhir=False)
+        rid = _id_from(data, {})
+        if status >= 400 or not rid:
+            self._raise(status, data)
+        await self._remember(ctx, "shift", ctx.shift["id"], "Appointment", rid)
+        return rid
 
     async def _ensure_people(self, ctx: EmrContext) -> dict:
         ids = {"Organization": await self._ensure_org(ctx)}
@@ -264,9 +320,15 @@ class FhirDriver:
         existing = ctx.links.get((rock_kind, str(rock_id), rtype))
         if existing:
             return existing
+        can_cond = (self.profile.supports_conditional_create
+                    and rtype not in self.profile.no_identifier_search)
+        if not can_cond:
+            found = await self._search_id(ctx, rtype, value)
+            if found:
+                await self._remember(ctx, rock_kind, rock_id, rtype, found)
+                return found
         extra = {}
-        if (self.profile.supports_conditional_create
-                and rtype not in self.profile.no_identifier_search):
+        if can_cond:
             extra["If-None-Exist"] = (
                 f"identifier={quote(mapping.IDENT_SYSTEM, safe='')}|"
                 f"{quote(str(value), safe='')}"
@@ -281,6 +343,9 @@ class FhirDriver:
             if not rid:
                 raise EmrTransientError(f"{rtype} create {status} had no id")
             await self._remember(ctx, rock_kind, rock_id, rtype, rid)
+            if rtype == "Patient" and isinstance(data, dict) and data.get("pid"):
+                await self._remember(ctx, rock_kind, rock_id, "PatientPid",
+                                     str(data["pid"]))
             return rid
         if status in self.profile.conflict_statuses or status in (400, 412):
             rid = await self._search_id(ctx, rtype, value)
@@ -308,8 +373,17 @@ class FhirDriver:
                                  rtype, str(rid), self.backend)
         ctx.links[(rock_kind, str(rock_id), rtype)] = str(rid)
 
+    async def _skip(self, ctx: EmrContext, resource_type: str) -> None:
+        await db.log_event(
+            "emr", "emr_unsupported", agency_id=ctx.agency["id"],
+            shift_id=(ctx.shift or {}).get("id"),
+            payload={"resource": resource_type, "backend": self.backend})
+
     async def _update(self, ctx: EmrContext, rtype: str, rid: str,
                       mutate: Callable[[dict], None]) -> None:
+        if rtype == "Appointment" and self.profile.rest_appointment:
+            await self._skip(ctx, "Appointment.update")
+            return
         resource = await self._get(ctx, rtype, rid)
         mutate(resource)
         if await self._put(ctx, resource) == "conflict":
@@ -341,18 +415,22 @@ class FhirDriver:
     # ---- transport ----
 
     async def _request(self, method: str, path: str, *, payload=None,
-                       extra: dict | None = None, secret: str | None) -> tuple[int, Any, dict]:
-        headers = {"Accept": "application/fhir+json", **await self.auth.headers(secret)}
+                       extra: dict | None = None, secret: str | None,
+                       fhir: bool = True) -> tuple[int, Any, dict]:
+        mime = "application/fhir+json" if fhir else "application/json"
+        headers = {"Accept": mime, **await self.auth.headers(secret)}
         if extra:
             headers.update(extra)
         body = None
         if payload is not None:
-            headers["Content-Type"] = "application/fhir+json"
+            headers["Content-Type"] = mime
             body = json.dumps(payload).encode()
         url = path if path.startswith("http") else f"{self.base}/{path.lstrip('/')}"
+        ssl = False if not self.profile.verify_tls else None
         try:
             async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-                async with session.request(method, url, headers=headers, data=body) as resp:
+                async with session.request(method, url, headers=headers,
+                                          data=body, ssl=ssl) as resp:
                     raw = await resp.read()
                     hdrs = {k: v for k, v in resp.headers.items()}
                     status = resp.status

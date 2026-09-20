@@ -58,11 +58,25 @@ def test_practitioner_phone_is_opt_in():
 def test_medplum_token_url_is_on_the_server_root():
     assert _token_url("http://localhost:8103/fhir/R4") == "http://localhost:8103/oauth2/token"
     assert _token_url("http://localhost:8080/fhir") == "http://localhost:8080/oauth2/token"
+    assert load_profile("openemr").token_url(
+        "https://localhost:9300/apis/default/fhir"
+    ) == "https://localhost:9300/oauth2/default/token"
 
 
 def test_fhir_instant_uses_t_and_z():
     assert fhir_instant("2026-09-20 13:24:01.123456+00:00") == "2026-09-20T13:24:01Z"
     assert fhir_instant("2026-09-20T13:24:01+00:00") == "2026-09-20T13:24:01Z"
+
+
+def test_openemr_requires_official_name_and_npi():
+    body = load_profile("openemr").before_create({
+        "resourceType": "Practitioner",
+        "identifier": [{"system": IDENT_SYSTEM, "value": NURSE["id"]}],
+        "name": [{"text": "Ada Nurse", "given": ["Ada"], "family": "Nurse"}],
+    })
+    assert body["name"][0]["use"] == "official"
+    systems = [i["system"] for i in body["identifier"]]
+    assert "http://hl7.org/fhir/sid/us-npi" in systems
 
 
 def test_medplum_strips_provenance_identifier():
