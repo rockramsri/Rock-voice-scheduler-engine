@@ -29,7 +29,16 @@ log = logging.getLogger("worker.outbox")
 # Retry waits by failure number (1-based). OUTBOX_MAX_ATTEMPTS caps the count.
 BACKOFF_SECONDS = [30, 60, 300, 900, 3600, 3600, 3600, 3600]
 
-# Which Rock row an external id belongs to, per job kind (for emr_links).
+# Which Rock row an external id belongs to. Resource type wins; job kind
+# is the fallback (the mock's record_id hangs off the shift).
+_TYPE_ANCHOR = {
+    "Organization": ("agency", "agency_id"),
+    "Practitioner": ("nurse", "nurse_id"),
+    "Patient": ("patient", "patient_id"),
+    "Appointment": ("shift", "shift_id"),
+    "Task": ("shift", "shift_id"),
+    "Provenance": ("shift", "shift_id"),
+}
 _LINK_ANCHOR = {
     "seed_agency": ("agency", "agency_id"),
     "upsert_practitioner": ("nurse", "nurse_id"),
@@ -105,10 +114,13 @@ async def _process(row: dict, worker: str) -> None:
         return
 
     # Success: remember external ids, complete the row, audit for the console.
-    anchor_kind, anchor_field = _LINK_ANCHOR.get(kind, _DEFAULT_ANCHOR)
-    anchor_id = row.get(anchor_field) or row["agency_id"]
     for external_type, external_id in (result.external_ids or {}).items():
-        await db.upsert_emr_link(row["agency_id"], anchor_kind, anchor_id,
+        rock_kind, field = _TYPE_ANCHOR.get(external_type) or _LINK_ANCHOR.get(
+            kind, _DEFAULT_ANCHOR)
+        anchor_id = row["agency_id"] if field == "agency_id" else row.get(field)
+        if not anchor_id:
+            continue
+        await db.upsert_emr_link(row["agency_id"], rock_kind, anchor_id,
                                  external_type, str(external_id), client.backend)
     await db.complete_outbox(row["id"], worker, attempts)
     # `action` stays for the oracle and console (the mock wrote it since day 1);

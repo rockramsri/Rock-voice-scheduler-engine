@@ -10,10 +10,17 @@ from __future__ import annotations
 from workplane.emr.base import EmrClient, EmrPermanentError
 from workplane.emr.mock_driver import MockDriver
 
+# fhir + vendor aliases all share FhirDriver; the profile is the vendor knob.
+_FHIR = {"fhir", "hapi", "medplum", "openemr"}
+
 
 def build_client(agency: dict) -> EmrClient:
     backend = (agency.get("emr_backend") or "mock").strip()
     if backend == "mock":
         return MockDriver()
-    # "fhir" arrives with M2 (workplane/emr/fhir_driver.py).
+    if backend in _FHIR:
+        from workplane.emr.fhir_driver import FhirDriver
+        from workplane.emr.profiles import load_profile
+        profile = agency.get("emr_profile") or (backend if backend != "fhir" else "generic")
+        return FhirDriver(agency, load_profile(profile))
     raise EmrPermanentError(f"unknown emr_backend: {backend!r}")

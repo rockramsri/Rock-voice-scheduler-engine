@@ -76,6 +76,12 @@ OUTBOX_POLL_SECONDS: float = float(os.getenv("OUTBOX_POLL_SECONDS", "2"))
 OUTBOX_MAX_ATTEMPTS: int = int(os.getenv("OUTBOX_MAX_ATTEMPTS", "8"))
 # Oracle: a filled shift must show its emr_writeback within this many seconds.
 EMR_ORACLE_WINDOW_SECONDS: float = float(os.getenv("EMR_ORACLE_WINDOW_SECONDS", "30"))
+EMR_DEFAULT_BACKEND: str = os.getenv("EMR_DEFAULT_BACKEND", "mock")
+HAPI_BASE_URL: str = os.getenv("HAPI_BASE_URL", "http://localhost:8080/fhir").rstrip("/")
+EMR_TEST_BACKENDS: tuple[str, ...] = tuple(
+    b.strip() for b in os.getenv("EMR_TEST_BACKENDS", "mock,hapi").split(",") if b.strip()
+)
+DEBUG_EMR_BODIES: bool = _env_bool("DEBUG_EMR_BODIES", False)
 
 
 def env_secret(name: str | None) -> str | None:

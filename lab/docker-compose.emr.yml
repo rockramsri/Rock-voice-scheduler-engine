@@ -1,0 +1,152 @@
+# Local EMR lab — UNTRACKED for now. Do not commit until M2+.
+# Bring up:  docker compose -f lab/docker-compose.emr.yml up -d
+# Tear down: docker compose -f lab/docker-compose.emr.yml down -v
+#
+# Host ports: HAPI 8080 · Medplum API 8103 / app 3000 · OpenEMR 8300/9300
+# Postgres and Redis stay internal (no host publish) so they don't collide
+# with anything else on the machine.
+
+name: rock-emr-lab
+
+services:
+  hapi:
+    image: hapiproject/hapi:v8.10.0-3
+    ports:
+      - "8080:8080"
+    environment:
+      hapi.fhir.fhir_version: R4
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  medplum-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: medplum
+      POSTGRES_PASSWORD: medplum
+    volumes:
+      - medplum-postgres-data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "listen_addresses=*", "-c", "statement_timeout=60000"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medplum"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  medplum-redis:
+    image: redis:7
+    command: redis-server --requirepass medplum
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "medplum", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  medplum-server:
+    image: medplum/medplum-server:latest
+    depends_on:
+      medplum-postgres:
+        condition: service_healthy
+      medplum-redis:
+        condition: service_healthy
+    ports:
+      - "8103:8103"
+    command: ["node", "--enable-source-maps", "packages/server/dist/index.js"]
+    environment:
+      MEDPLUM_PORT: 8103
+      MEDPLUM_BASE_URL: "http://localhost:8103/"
+      MEDPLUM_APP_BASE_URL: "http://localhost:3000/"
+      MEDPLUM_STORAGE_BASE_URL: "http://localhost:8103/storage/"
+      MEDPLUM_DATABASE_HOST: medplum-postgres
+      MEDPLUM_DATABASE_PORT: 5432
+      MEDPLUM_DATABASE_DBNAME: medplum
+      MEDPLUM_DATABASE_USERNAME: medplum
+      MEDPLUM_DATABASE_PASSWORD: medplum
+      MEDPLUM_REDIS_HOST: medplum-redis
+      MEDPLUM_REDIS_PORT: 6379
+      MEDPLUM_REDIS_PASSWORD: medplum
+      MEDPLUM_BINARY_STORAGE: "file:./binary/"
+      MEDPLUM_ALLOWED_ORIGINS: "*"
+      MEDPLUM_INTROSPECTION_ENABLED: "true"
+      MEDPLUM_VM_CONTEXT_BOTS_ENABLED: "true"
+      MEDPLUM_DEFAULT_BOT_RUNTIME_VERSION: vmcontext
+      MEDPLUM_MAX_JSON_SIZE: 1mb
+      MEDPLUM_MAX_BATCH_SIZE: 50mb
+      MEDPLUM_SHUTDOWN_TIMEOUT_MILLISECONDS: "30000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8103/healthcheck').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))",
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+
+  medplum-app:
+    image: medplum/medplum-app:latest
+    depends_on:
+      medplum-server:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  openemr-db:
+    image: mariadb:11.8
+    command: ["mariadbd", "--character-set-server=utf8mb4"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - openemr-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  openemr:
+    image: openemr/openemr:8.2.0
+    depends_on:
+      openemr-db:
+        condition: service_healthy
+    ports:
+      - "8300:80"
+      - "9300:443"
+    environment:
+      MYSQL_HOST: openemr-db
+      MYSQL_ROOT_PASS: root
+      MYSQL_USER: openemr
+      MYSQL_PASS: openemr
+      OE_USER: admin
+      OE_PASS: pass
+      OPENEMR_SETTING_site_addr_oath: "https://localhost:9300"
+      OPENEMR_SETTING_oauth_password_grant: "3"
+      OPENEMR_SETTING_rest_api: "1"
+      OPENEMR_SETTING_rest_fhir_api: "1"
+      OPENEMR_SETTING_rest_system_scopes_api: "1"
+    volumes:
+      - openemr-sites:/var/www/localhost/htdocs/openemr/sites
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost/interface/login/login.php"]
+      interval: 20s
+      timeout: 10s
+      retries: 30
+      start_period: 180s
+
+volumes:
+  medplum-postgres-data:
+  openemr-db-data:
+  openemr-sites:

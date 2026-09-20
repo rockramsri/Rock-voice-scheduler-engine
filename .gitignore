@@ -9,5 +9,6 @@ ops-console/scripts/demo-gif/raw/
 # eval harness: secrets + per-run evidence
 evals/.env.eval
 evals/artifacts/
+lab/probe-report.json
 evals/ARCHITECTURE.md
 ops-console/src/routes/evals.tsx
