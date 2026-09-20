@@ -1,13 +1,15 @@
 """EMR contract suite — every backend in EMR_TEST_BACKENDS must pass.
 
-M1 = mock. M2 adds hapi (skipped if localhost:8080 is down). Numbering
+M1 = mock. M2 = hapi. M3 = medplum. Unreachable servers skip. Numbering
 follows docs/emr-architecture.md §7.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -20,41 +22,123 @@ from workplane.emr.base import EmrPermanentError, EmrTransientError
 from workplane.emr.mapping import IDENT_SYSTEM
 from workers.outbox_worker import drain_outbox_once
 
+_MEDPLUM_SECRET_ENV = "EMR_TEST_MEDPLUM_SECRET"
 
-def _reachable(base: str, timeout: float = 2.0) -> bool:
+
+def _reachable(url: str, timeout: float = 2.0) -> bool:
     try:
-        urllib.request.urlopen(f"{base.rstrip('/')}/metadata", timeout=timeout)
+        urllib.request.urlopen(url, timeout=timeout)
         return True
     except Exception:
         return False
 
 
-def _hapi_total(rtype: str, value: str) -> int:
-    q = urllib.parse.quote(f"{IDENT_SYSTEM}|{value}", safe="")
-    url = f"{config.HAPI_BASE_URL}/{rtype}?identifier={q}"
-    with urllib.request.urlopen(url, timeout=10) as resp:
-        return int(json.loads(resp.read()).get("total") or 0)
+def _http_json(method: str, url: str, *, payload=None, headers=None, form=None):
+    hdrs = dict(headers or {})
+    body = None
+    if payload is not None:
+        body = json.dumps(payload).encode()
+        hdrs.setdefault("Content-Type", "application/json")
+    elif form is not None:
+        body = urllib.parse.urlencode(form).encode()
+        hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
+    req = urllib.request.Request(url, data=body, method=method, headers=hdrs)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, json.loads(resp.read() or b"null")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        try:
+            return exc.code, json.loads(raw or b"null")
+        except json.JSONDecodeError:
+            return exc.code, {"_raw": raw[:200].decode(errors="replace")}
 
 
-def _hapi_read(rtype: str, rid: str) -> dict:
-    url = f"{config.HAPI_BASE_URL}/{rtype}/{rid}"
-    with urllib.request.urlopen(url, timeout=10) as resp:
+def _medplum_mint() -> tuple[str, str, str]:
+    """Admin login → mint a ClientApplication → client_credentials token."""
+    root = config.MEDPLUM_BASE_URL
+    _, login = _http_json("POST", f"{root}/auth/login", payload={
+        "email": "admin@example.com", "password": "medplum_admin",
+        "codeChallengeMethod": "plain", "codeChallenge": "lab",
+    })
+    if not login.get("code"):
+        pytest.skip("Medplum admin login failed")
+    _, tok = _http_json("POST", f"{root}/oauth2/token", form={
+        "grant_type": "authorization_code", "code": login["code"],
+        "code_verifier": "lab",
+    })
+    user = tok.get("access_token")
+    if not user:
+        pytest.skip("Medplum admin token failed")
+    auth = {"Authorization": f"Bearer {user}"}
+    _, me = _http_json("GET", f"{root}/auth/me", headers=auth)
+    proj = (me.get("project") or {}).get("id")
+    _, app = _http_json("POST", f"{root}/admin/projects/{proj}/client",
+                        headers=auth, payload={"name": "Rock Eval Drainer"})
+    if not (app.get("id") and app.get("secret")):
+        pytest.skip("Medplum client mint failed")
+    _, cc = _http_json("POST", f"{root}/oauth2/token", form={
+        "grant_type": "client_credentials",
+        "client_id": app["id"], "client_secret": app["secret"],
+    })
+    if not cc.get("access_token"):
+        pytest.skip("Medplum client_credentials failed")
+    return app["id"], app["secret"], cc["access_token"]
+
+
+@pytest.fixture(scope="session")
+def medplum_creds():
+    if not _reachable(f"{config.MEDPLUM_BASE_URL}/healthcheck"):
+        pytest.skip("Medplum not reachable")
+    return _medplum_mint()
+
+
+def _fhir_json(world, path: str) -> dict:
+    req = urllib.request.Request(
+        f"{world.fhir_base}/{path.lstrip('/')}",
+        headers={"Accept": "application/fhir+json", **world.fhir_headers})
+    with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read())
+
+
+def _fhir_total(world, rtype: str, value: str) -> int:
+    q = urllib.parse.quote(f"{IDENT_SYSTEM}|{value}", safe="")
+    bundle = _fhir_json(world, f"{rtype}?identifier={q}")
+    if bundle.get("total") is not None:
+        return int(bundle["total"])
+    return len(bundle.get("entry") or [])
+
+
+def _fhir_read(world, rtype: str, rid: str) -> dict:
+    return _fhir_json(world, f"{rtype}/{rid}")
 
 
 @pytest.fixture(params=list(config.EMR_TEST_BACKENDS))
 async def world(eval_db, request):
     backend = request.param
     agency = {}
+    fhir_base, fhir_headers = None, {}
     if backend == "hapi":
-        if not _reachable(config.HAPI_BASE_URL):
+        if not _reachable(f"{config.HAPI_BASE_URL}/metadata"):
             pytest.skip("HAPI not reachable")
         agency = {
             "emr_backend": "hapi", "emr_profile": "hapi",
             "emr_base_url": config.HAPI_BASE_URL, "emr_auth_kind": "none",
         }
+        fhir_base = config.HAPI_BASE_URL
+    elif backend == "medplum":
+        cid, secret, token = request.getfixturevalue("medplum_creds")
+        os.environ[_MEDPLUM_SECRET_ENV] = secret
+        agency = {
+            "emr_backend": "medplum", "emr_profile": "medplum",
+            "emr_base_url": config.MEDPLUM_FHIR_URL,
+            "emr_auth_kind": "client_credentials",
+            "emr_client_id": cid, "emr_secret_ref": _MEDPLUM_SECRET_ENV,
+        }
+        fhir_base = config.MEDPLUM_FHIR_URL
+        fhir_headers = {"Authorization": f"Bearer {token}"}
     elif backend != "mock":
-        pytest.skip(f"{backend} is not an M2 contract target")
+        pytest.skip(f"{backend} is not a contract target yet")
     run = seed.seed_run(
         roster=[{"slug": "CG-OUT"}, {"slug": "CG-WIN"}],
         shifts=[{"slug": "SH-1", "nurse": "CG-OUT", "starts_in_hours": 26,
@@ -62,6 +146,8 @@ async def world(eval_db, request):
         agency=agency,
     )
     run.backend = backend
+    run.fhir_base = fhir_base
+    run.fhir_headers = fhir_headers
     try:
         yield run
     finally:
@@ -118,9 +204,9 @@ async def test_seed_roster(world):
     _reopen(world, done_at=None, claimed_by=None, claimed_at=None)
     await drain_outbox_once(agency_id=aid)
     assert len(_links(world)) == len(links_before)
-    if world.backend == "hapi":
-        assert _hapi_total("Organization", aid) == 1
-        assert _hapi_total("Appointment", sid) == 1
+    if world.fhir_base:
+        assert _fhir_total(world, "Organization", aid) == 1
+        assert _fhir_total(world, "Appointment", sid) == 1
 
 
 # ---- 2 callout then fill ----
@@ -171,13 +257,13 @@ async def test_replay_is_idempotent(world):
     assert len(_outbox(world)) == len(rows_before)
     assert len(_links(world)) == len(links_before)
     assert all(r["done_at"] for r in _outbox(world))
-    if world.backend == "hapi":
-        assert _hapi_total("Appointment", shift_id) == 1
+    if world.fhir_base:
+        assert _fhir_total(world, "Appointment", shift_id) == 1
         appt = next(l for l in _links(world) if l["external_type"] == "Appointment")
         q = urllib.parse.quote(f"Appointment/{appt['external_id']}", safe="")
-        url = f"{config.HAPI_BASE_URL}/Provenance?target={q}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            assert int(json.loads(resp.read()).get("total") or 0) == 1
+        bundle = _fhir_json(world, f"Provenance?target={q}")
+        n = bundle.get("total")
+        assert (int(n) if n is not None else len(bundle.get("entry") or [])) == 1
 
 
 # ---- 4 escalated ----
@@ -188,9 +274,9 @@ async def test_escalated(world):
                          f"escalated:{shift_id}:test4")
     assert await drain_outbox_once(agency_id=world.agency_id) == 1
     assert _outbox(world)[0]["done_at"]
-    if world.backend == "hapi":
+    if world.fhir_base:
         task = next(l for l in _links(world) if l["external_type"] == "Task")
-        body = _hapi_read("Task", task["external_id"])
+        body = _fhir_read(world, "Task", task["external_id"])
         assert body["status"] == "on-hold"
 
 
@@ -269,20 +355,29 @@ async def test_crash_resume(world):
 # ---- 9 minimum necessary (FHIR bodies) ----
 
 async def test_minimum_necessary(world):
-    if world.backend != "hapi":
+    if not world.fhir_base:
         pytest.skip("minimum-necessary inspects FHIR resources")
     shift_id = world.uuid("SH-1")
     assert await db.record_callout_with_outbox(shift_id, world.uuid("CG-OUT"), "sick")
+    assert await db.lock_shift_with_outbox(shift_id, world.uuid("CG-WIN"))
     await drain_outbox_once(agency_id=world.agency_id)
     pat = next(l for l in _links(world) if l["external_type"] == "Patient")
-    body = _hapi_read("Patient", pat["external_id"])
+    body = _fhir_read(world, "Patient", pat["external_id"])
     assert "name" not in body
     assert "address" not in body
     prac = next(l for l in _links(world) if l["external_type"] == "Practitioner")
-    pbody = _hapi_read("Practitioner", prac["external_id"])
+    pbody = _fhir_read(world, "Practitioner", prac["external_id"])
     assert "telecom" not in pbody
-    dumped = json.dumps(body) + json.dumps(pbody)
+    appt = next(l for l in _links(world) if l["external_type"] == "Appointment")
+    task = next(l for l in _links(world) if l["external_type"] == "Task")
+    dumped = json.dumps({
+        "Patient": body, "Practitioner": pbody,
+        "Appointment": _fhir_read(world, "Appointment", appt["external_id"]),
+        "Task": _fhir_read(world, "Task", task["external_id"]),
+    })
     assert "sick" not in dumped
+    assert "555-" not in dumped
+    print(f"\n{world.backend} minimum-necessary dump (no PHI): {dumped[:400]}")
 
 
 # ---- 10 misconfiguration is visible ----

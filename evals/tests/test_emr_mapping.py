@@ -1,9 +1,11 @@
 """Pure FHIR mapping tests — flags, identifiers, no I/O."""
 
+from workplane.emr.fhir_driver import _token_url
 from workplane.emr.mapping import (
-    IDENT_SYSTEM, compact_ts, human_name, organization, patient,
+    IDENT_SYSTEM, compact_ts, fhir_instant, human_name, organization, patient,
     practitioner, send_flags,
 )
+from workplane.emr.profiles import load_profile
 
 AGENCY = {"id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "name": "Rock Lab"}
 NURSE = {"id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "name": "Ada Nurse",
@@ -51,6 +53,23 @@ def test_practitioner_phone_is_opt_in():
     on = practitioner(NURSE, send_phone=True)
     assert "telecom" not in off
     assert on["telecom"][0]["value"] == "555-0100"
+
+
+def test_medplum_token_url_is_on_the_server_root():
+    assert _token_url("http://localhost:8103/fhir/R4") == "http://localhost:8103/oauth2/token"
+    assert _token_url("http://localhost:8080/fhir") == "http://localhost:8080/oauth2/token"
+
+
+def test_fhir_instant_uses_t_and_z():
+    assert fhir_instant("2026-09-20 13:24:01.123456+00:00") == "2026-09-20T13:24:01Z"
+    assert fhir_instant("2026-09-20T13:24:01+00:00") == "2026-09-20T13:24:01Z"
+
+
+def test_medplum_strips_provenance_identifier():
+    body = {"resourceType": "Provenance", "identifier": [{"value": "x"}],
+            "target": [{"reference": "Appointment/1"}]}
+    assert "identifier" not in load_profile("medplum").before_create(body)
+    assert "identifier" in load_profile("hapi").before_create(dict(body))
 
 
 def test_reason_never_in_mapped_resources():

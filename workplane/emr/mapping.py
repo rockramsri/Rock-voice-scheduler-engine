@@ -8,6 +8,8 @@ appear — they stay in Rock's own events table.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 IDENT_SYSTEM = "https://rockscheduler.dev/ids"
 
 
@@ -21,6 +23,21 @@ def compact_ts(iso: str | None) -> str:
         return "none"
     digits = "".join(c for c in str(iso) if c.isdigit())
     return digits[:14] or "none"
+
+
+def fhir_instant(value: str | None) -> str:
+    """UTC instant with a T and Z. Medplum rejects spaces; HAPI is looser."""
+    raw = str(value).strip().replace(" ", "T") if value else ""
+    if not raw:
+        dt = datetime.now(UTC)
+    else:
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            dt = datetime.now(UTC)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def human_name(full: str) -> dict:
@@ -84,9 +101,9 @@ def appointment(shift: dict, *, patient_ref: str | None,
         "participant": parts,
     }
     if shift.get("starts_at"):
-        resource["start"] = str(shift["starts_at"])
+        resource["start"] = fhir_instant(shift["starts_at"])
     if shift.get("ends_at"):
-        resource["end"] = str(shift["ends_at"])
+        resource["end"] = fhir_instant(shift["ends_at"])
     return resource
 
 
@@ -106,7 +123,7 @@ def task(ident_value: str, *, status: str, focus_ref: str | None = None) -> dict
 def provenance(ident_value: str, *, target_ref: str, recorded: str) -> dict:
     return {
         "resourceType": "Provenance",
-        "recorded": recorded,
+        "recorded": fhir_instant(recorded),
         "identifier": [ident(ident_value)],
         "target": [{"reference": target_ref}],
         "agent": [{"who": {"display": "Rock Scheduler"}}],

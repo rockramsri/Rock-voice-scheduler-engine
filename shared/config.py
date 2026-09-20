@@ -78,6 +78,8 @@ OUTBOX_MAX_ATTEMPTS: int = int(os.getenv("OUTBOX_MAX_ATTEMPTS", "8"))
 EMR_ORACLE_WINDOW_SECONDS: float = float(os.getenv("EMR_ORACLE_WINDOW_SECONDS", "30"))
 EMR_DEFAULT_BACKEND: str = os.getenv("EMR_DEFAULT_BACKEND", "mock")
 HAPI_BASE_URL: str = os.getenv("HAPI_BASE_URL", "http://localhost:8080/fhir").rstrip("/")
+MEDPLUM_BASE_URL: str = os.getenv("MEDPLUM_BASE_URL", "http://localhost:8103").rstrip("/")
+MEDPLUM_FHIR_URL: str = os.getenv("MEDPLUM_FHIR_URL", f"{MEDPLUM_BASE_URL}/fhir/R4").rstrip("/")
 EMR_TEST_BACKENDS: tuple[str, ...] = tuple(
     b.strip() for b in os.getenv("EMR_TEST_BACKENDS", "mock,hapi").split(",") if b.strip()
 )

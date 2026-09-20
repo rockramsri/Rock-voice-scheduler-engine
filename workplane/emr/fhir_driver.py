@@ -24,9 +24,16 @@ from workplane.emr.base import (
 from workplane.emr.profiles import FhirProfile, load_profile
 
 _TIMEOUT = aiohttp.ClientTimeout(total=20)
-# HAPI Provenance has no identifier search param, so If-None-Exist 400s.
-# Replay uses the emr_links row written after the first create.
-_NO_IDENTIFIER_SEARCH = frozenset({"Provenance"})
+
+
+def _token_url(fhir_base: str) -> str:
+    """Medplum's token endpoint lives on the server root, not under /fhir/R4."""
+    base = fhir_base.rstrip("/")
+    if base.endswith("/fhir/R4"):
+        return base[: -len("/fhir/R4")] + "/oauth2/token"
+    if "/fhir" in base:
+        return base.split("/fhir", 1)[0] + "/oauth2/token"
+    return base + "/oauth2/token"
 
 
 def _id_from(data: Any, headers: dict) -> str | None:
@@ -42,9 +49,11 @@ def _id_from(data: Any, headers: dict) -> str | None:
 def _issue(data: Any) -> str:
     if isinstance(data, dict) and data.get("issue"):
         first = data["issue"][0]
-        return str(first.get("diagnostics") or first.get("code") or "")[:120]
+        details = first.get("details")
+        text = details.get("text") if isinstance(details, dict) else None
+        return str(text or first.get("diagnostics") or first.get("code") or "")[:160]
     if isinstance(data, dict):
-        return str(data.get("message") or data.get("error") or "")[:120]
+        return str(data.get("message") or data.get("error") or "")[:160]
     return ""
 
 
@@ -55,7 +64,9 @@ class FhirDriver:
         self.base = (agency.get("emr_base_url") or self.profile.default_base_url).rstrip("/")
         if not self.base:
             raise EmrPermanentError("emr_base_url is empty")
-        self.auth = make_auth(agency.get("emr_auth_kind") or self.profile.default_auth_kind)
+        kind = agency.get("emr_auth_kind") or self.profile.default_auth_kind
+        self.auth = make_auth(kind, client_id=agency.get("emr_client_id"),
+                              token_url=_token_url(self.base))
 
     async def capabilities(self) -> dict:
         status, data, _ = await self._request("GET", "metadata", secret=None)
@@ -224,7 +235,7 @@ class FhirDriver:
             return existing
         extra = {}
         if (self.profile.supports_conditional_create
-                and rtype not in _NO_IDENTIFIER_SEARCH):
+                and rtype not in self.profile.no_identifier_search):
             extra["If-None-Exist"] = (
                 f"identifier={quote(mapping.IDENT_SYSTEM, safe='')}|"
                 f"{quote(str(value), safe='')}"

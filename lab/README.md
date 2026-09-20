@@ -1,13 +1,38 @@
 # Local EMR lab
 
-Untracked until M2. Bring up HAPI (CI target); Medplum and OpenEMR stay in
-the same compose file for later milestones.
+HAPI is the CI target. Medplum is the M3 contract target when
+`EMR_TEST_BACKENDS=mock,hapi,medplum`. OpenEMR stays in this compose
+file for M5.
 
 ```
 docker compose -f lab/docker-compose.emr.yml up -d
 python lab/probe_emr.py
+EMR_TEST_BACKENDS=mock,hapi,medplum python -m pytest \
+  evals/tests/test_emr_mapping.py evals/tests/test_outbox_backoff.py \
+  evals/tests/test_emr_contract.py
 docker compose -f lab/docker-compose.emr.yml down -v
 ```
 
 Host ports: HAPI `8080`, Medplum `8103`/`3000`, OpenEMR `8300`/`9300`.
 Postgres and Redis stay unpublished.
+
+## Medplum first run
+
+The image already has `admin@example.com` / `medplum_admin`. Do not
+`POST /fhir/R4/ClientApplication` — that 201 is inert (no membership).
+Mint a working client:
+
+```
+# after admin login + token exchange
+curl -s http://localhost:8103/admin/projects/$PROJECT_ID/client \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Rock Lab Drainer"}'
+```
+
+Put the returned `id` on `agencies.emr_client_id` and the `secret` in an
+env var whose NAME is `agencies.emr_secret_ref`. Auth is
+`client_credentials` at `http://localhost:8103/oauth2/token`.
+
+Medplum's Provenance schema has no `identifier` field — the driver
+strips it and replays via `emr_links`, same as HAPI.
